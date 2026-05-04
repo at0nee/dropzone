@@ -52,6 +52,12 @@ const ProductDetailPage: React.FC = () => {
       showToast('ℹ️ Не можна купувати власний товар', 'info')
       return
     }
+
+    // Перевіряємо наявність товару
+    if ((product.stock || 0) <= 0) {
+      showToast('❌ Товар недоступний - закінчився на складі', 'error')
+      return
+    }
     
     // Перевіряємо достатність коштів
     if (user.balance < product.price) {

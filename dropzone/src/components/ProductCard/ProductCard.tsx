@@ -51,6 +51,11 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
 
         <div className="product-footer">
           <div className="product-price">{product.price.toFixed(2)} ₴</div>
+          {product.stock !== undefined && product.stock !== null && (
+            <div className="product-stock" style={{ fontSize: '0.85em', color: product.stock > 3 ? '#666' : '#e74c3c' }}>
+              {product.stock > 0 ? `${product.stock} в наявності` : 'Немає'}
+            </div>
+          )}
         </div>
       </div>
     </Link>

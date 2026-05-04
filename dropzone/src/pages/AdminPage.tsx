@@ -150,8 +150,7 @@ const AdminPage: React.FC = () => {
 
       const firstDispute = nextOrders.find((order: any) => order.status === 'disputed')
       setSelectedDisputeId((current) => current || firstDispute?.id || '')
-    } catch (error) {
-      console.error('Failed to load backend admin data, falling back to local storage:', error)
+    } catch (_error) {
       const storedUsers = getStoredUsers()
       const storedOrders = getStoredOrders()
       const storedChats = getStoredChats()
@@ -290,8 +289,7 @@ const AdminPage: React.FC = () => {
           showToast(editingCategoryId ? '✅ Категорію оновлено' : '✅ Категорію додано', 'success')
           return
         }
-      } catch (error) {
-        console.error('Failed to save category via backend, using local fallback:', error)
+      } catch (_error) {
       }
 
       const fallback = getStoredCatalogCategories()
@@ -332,8 +330,7 @@ const AdminPage: React.FC = () => {
         if (editingCategoryId === categoryId) resetCategoryForm()
         showToast('✅ Категорію видалено', 'success')
         return
-      } catch (error) {
-        console.error('Failed to delete category via backend, using local fallback:', error)
+      } catch (_error) {
       }
 
       const fallback = getStoredCatalogCategories()
@@ -360,8 +357,7 @@ const AdminPage: React.FC = () => {
         setProductToDelete(null)
         showToast('✅ Товар видалено', 'success')
         return
-      } catch (err) {
-        console.error('Помилка видалення товару через backend, fallback на локальне сховище', err)
+      } catch (_err) {
       }
 
       const updated = products.filter((p: any) => p.id !== productId)
@@ -406,8 +402,7 @@ const AdminPage: React.FC = () => {
           setOpenRoleMenu(null)
           return
         }
-      } catch (error) {
-        console.error('Failed to update user role via backend, using local fallback:', error)
+      } catch (_error) {
       }
 
       const updatedUsers = updateStoredUserRole(targetUserId, nextRole)
@@ -434,8 +429,7 @@ const AdminPage: React.FC = () => {
           showToast('✅ Баланс оновлено', 'success')
           return
         }
-      } catch (error) {
-        console.error('Failed to update user balance via backend, using local fallback:', error)
+      } catch (_error) {
       }
 
       const updatedUsers = users.map((u) => u.id === targetUserId ? { ...u, balance: newBalance } : u)
@@ -467,8 +461,7 @@ const AdminPage: React.FC = () => {
           setSupportMessage('')
           showToast('✅ Повідомлення саппорта відправлене (backend)', 'success')
           return
-        } catch (err) {
-          console.error('Failed to send support message via backend, falling back to local:', err)
+        } catch (_err) {
         }
       }
 
@@ -578,8 +571,7 @@ const AdminPage: React.FC = () => {
           )
           return
         }
-      } catch (error) {
-        console.error('Failed to resolve dispute via backend, falling back to local storage:', error)
+      } catch (_error) {
       }
 
       const result = resolveDispute(activeDispute.id, resolution, user?.username || 'Support')

@@ -22,8 +22,7 @@ const LoginPage: React.FC = () => {
         await register(email, password, username)
       }
       navigate('/')
-    } catch (err) {
-      console.error('Auth error:', err)
+    } catch (_err) {
     }
   }
 

@@ -41,8 +41,7 @@ const HomePage: React.FC = () => {
         setCompletedOrders((savedOrders || []).filter((order: any) => order.status === 'completed'))
         setReviews((Array.isArray(savedReviews) ? savedReviews : savedReviews?.data) || [])
         setAllProducts(((Array.isArray(products) ? products : products?.data) || []).filter((product: any) => Number(product.stock || 0) > 0))
-      } catch (error) {
-        console.error('Failed to fetch products:', error)
+      } catch (_error) {
         setCompletedOrders([])
         setReviews([])
         setAllProducts([])

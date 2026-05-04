@@ -81,8 +81,7 @@ const ProfilePage: React.FC = () => {
         setMyProducts((products || []).filter((p: any) => p.seller_id === user?.id))
         setProductToDelete(null)
       })()
-    } catch (error) {
-      console.error('Помилка при видаленні товару:', error)
+    } catch (_error) {
     }
   }
 
@@ -112,8 +111,7 @@ const ProfilePage: React.FC = () => {
         }
         setIsEditing(false)
       })()
-    } catch (error) {
-      console.error('Помилка збереження профілю', error)
+    } catch (_error) {
       showToast('❌ Помилка збереження', 'error')
     }
   }

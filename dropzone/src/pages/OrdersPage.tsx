@@ -36,23 +36,16 @@ const OrdersPage: React.FC = () => {
 
   useEffect(() => {
     // Wait for auth initialization before checking authentication
-      console.log(`[OrdersPage] useEffect fired: isInitialized=${isInitialized}, isAuthenticated=${isAuthenticated}`)
       if (!isInitialized) {
-        console.log(`[OrdersPage] ⏳ Waiting for isInitialized...`)
         return
       }
 
       if (!isAuthenticated) {
-        console.log(`[OrdersPage] ✗ Not authenticated, redirecting to /login`)
         navigate('/login')
         return
       }
-
-      console.log(`[OrdersPage] ✓ isInitialized=true and isAuthenticated=true, loading orders...`)
     const load = async () => {
-        console.log(`[OrdersPage] ⏳ Calling facade.getOrders()...`)
       const savedOrders = await facade.getOrders()
-        console.log(`[OrdersPage] ✓ Orders loaded:`, savedOrders?.length || 0, 'items')
       setOrders(savedOrders || [])
       setLoading(false)
     }
@@ -71,7 +64,6 @@ const OrdersPage: React.FC = () => {
       try {
         // Make API call to backend to update order status
         const response = await ordersService.updateStatus(orderId, 'completed')
-        console.log('✅ Order status updated on backend:', response.data)
         
         if (!response.data.success) {
           showToast('❌ Помилка при підтвердженні замовлення', 'error')
@@ -106,7 +98,6 @@ const OrdersPage: React.FC = () => {
           showToast(`✅ Замовлення доставлено! Дякуємо за покупку.`, 'success')
         }
       } catch (error) {
-        console.error('❌ Error completing order:', error)
         showToast('❌ Помилка: ' + (error as any).message, 'error')
       }
     })()
@@ -117,7 +108,7 @@ const OrdersPage: React.FC = () => {
       try {
         // Make API call to backend to update order status
         const response = await ordersService.updateStatus(orderId, 'disputed')
-        console.log('✅ Dispute opened:', response.data)
+        const response = await ordersService.updateStatus(orderId, 'disputed')
         
         if (!response.data.success) {
           showToast('❌ Помилка при відкритті спору', 'error')
@@ -150,7 +141,6 @@ const OrdersPage: React.FC = () => {
           showToast('✅ Спір відкрито. Очікуємо рішення адміністратора.', 'success')
         }
       } catch (error) {
-        console.error('❌ Error opening dispute:', error)
         showToast('❌ Помилка: ' + (error as any).message, 'error')
       }
     })()

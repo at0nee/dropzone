@@ -101,8 +101,7 @@ const CreateProductPage: React.FC = () => {
           }))
           return
         }
-      } catch (error) {
-        console.error('Failed to load catalog taxonomy from backend, using local fallback:', error)
+      } catch (_error) {
       }
 
       const stored = getStoredCatalogCategories()

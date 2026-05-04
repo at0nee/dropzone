@@ -215,12 +215,10 @@ export const getOrders = async () => {
   try {
     // Try to get orders from backend
     const response = await ordersService.getAll()
-    console.log('✅ Orders from backend:', response.data)
     if (response.data.success && Array.isArray(response.data.data)) {
       return response.data.data
     }
-  } catch (err) {
-    console.error('❌ Failed to fetch orders from backend, falling back to localStorage:', err)
+  } catch (_err) {
   }
   // Fallback to localStorage
   return adminData.getStoredOrders()
@@ -250,14 +248,10 @@ export const updateOrderStatus = async (orderId: string, status: string) => {
 export const createOrder = async (productId: string, quantity: number = 1) => {
   try {
     const res = await cartService.addItem(productId, quantity)
-    console.log('✅ Added to cart:', res.data)
     const checkout = await cartService.checkout()
-    console.log('✅ Checkout response:', checkout.data)
-    
     // Return checkout response which includes updated user balance and orders
     return checkout.data.data
-  } catch (err) {
-    console.error('Backend order creation failed, falling back to localStorage:', err)
+  } catch (_err) {
     // Fallback: create order locally
     const product = adminData.getStoredProducts().find((p: any) => p.id === productId)
     if (!product) throw new Error('Product not found')

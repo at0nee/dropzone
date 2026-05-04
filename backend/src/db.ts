@@ -341,8 +341,7 @@ const ensureSchema = async () => {
         CONSTRAINT fk_catalog_categories_parent FOREIGN KEY (parent_id) REFERENCES ${CATALOG_CATEGORIES_TABLE}(id) ON DELETE CASCADE
       )
     `)
-  } catch (err) {
-    console.error('❌ Таблиці не знайдені! Створіть їх в Workbench за інструкцією.')
+  } catch (_err) {
     throw new Error('Database tables not found. Please create them manually using the provided SQL.')
   }
 }

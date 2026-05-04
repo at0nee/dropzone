@@ -68,7 +68,6 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
 
   const handleTopUp = () => {
     if (topUpAmount && selectedPaymentMethod) {
-      console.log(`Поповнення на ${topUpAmount}₴ через ${selectedPaymentMethod}`)
       setTopUpAmount('')
       setBalanceMenuOpen(false)
       alert('✅ Баланс поповнено на ' + topUpAmount + '₴')

@@ -18,9 +18,6 @@ api.interceptors.request.use((config) => {
   const token = localStorage.getItem('auth_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
-    console.log(`[API] Adding token to request: ${config.url}, token: ${token.slice(0, 8)}...`)
-  } else {
-    console.warn(`[API] No token found for request: ${config.url}`)
   }
   return config
 })

@@ -80,7 +80,8 @@ const CatalogPage: React.FC = () => {
         setCategories(loadedCategories)
         setApps(loadedApps)
         saveStoredCatalogCategories(loadedCategories)
-      } catch (_error) {
+      } catch (error) {
+        console.error('Failed to load apps data from backend:', error)
         const stored = getStoredCatalogCategories()
         setCategories(stored.length > 0 ? stored : flattenCatalogCategories(DEFAULT_CATEGORIES))
         setApps(DEFAULT_APPS)
@@ -198,7 +199,8 @@ const CatalogPage: React.FC = () => {
         allProducts = allProducts.filter((p: any) => Number(p.stock || 0) > 0)
 
         setProducts(allProducts)
-      } catch (_error) {
+      } catch (error) {
+        console.error('Failed to fetch products:', error)
         setProducts(getStoredProducts().filter((p: any) => Number(p.stock || 0) > 0))
       } finally {
         setLoading(false)

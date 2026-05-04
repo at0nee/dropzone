@@ -10,8 +10,9 @@ interface AuthStore {
   isInitialized: boolean
   error: string | null
   isAuthenticated: boolean
-  login: (credentials: AuthCredentials) => Promise<void>
-  register: (email: string, password: string, username: string) => Promise<void>
+  login: (credentials: AuthCredentials) => Promise<boolean>
+  register: (email: string, password: string, username: string) => Promise<boolean>
+  
   logout: () => void
   clearError: () => void
   setUser: (user: User | null) => void
@@ -43,9 +44,13 @@ export const useAuthStore = create<AuthStore>((set) => ({
           isAuthenticated: true,
           balance: response.data.data.user?.balance || 0
         })
+        return true
       }
+      set({ error: response.data.error || 'Login failed' })
+      return false
     } catch (error: any) {
       set({ error: error.response?.data?.error || 'Login failed' })
+      return false
     } finally {
       set({ isLoading: false })
     }
@@ -64,9 +69,13 @@ export const useAuthStore = create<AuthStore>((set) => ({
           isAuthenticated: true,
           balance: response.data.data.user?.balance || 0
         })
+        return true
       }
+      set({ error: response.data.error || 'Registration failed' })
+      return false
     } catch (error: any) {
       set({ error: error.response?.data?.error || 'Registration failed' })
+      return false
     } finally {
       set({ isLoading: false })
     }
@@ -100,17 +109,25 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   initAuth: async () => {
     // On app initialization, try to restore user from server if token exists
+    console.log(`[Auth] ⏳ initAuth() START`)
     const token = localStorage.getItem('auth_token')
+    console.log(`[Auth] Token in localStorage: ${!!token} (${token ? token.slice(0, 8) + '...' : 'NONE'})`)
     
     if (!token) {
+      console.log(`[Auth] ✓ No token, setting unauthenticated and isInitialized=true`)
       set({ user: null, isAuthenticated: false, balance: 0, isInitialized: true })
+      console.log(`[Auth] ✓ initAuth() COMPLETE (no token)`)
       return
     }
 
     set({ isLoading: true })
     try {
+      console.log(`[Auth] ⏳ Calling /auth/me with token ${token.slice(0, 8)}...`)
       const response = await authService.getCurrentUser()
+      console.log(`[Auth] ✓ /auth/me response:`, response.status, response.data)
+      
       if (response.data.success && response.data.data) {
+        console.log(`[Auth] ✓ User restored: ${response.data.data.username}, setting isInitialized=true`)
         setStoredAuthUser(response.data.data)
         set({ 
           user: response.data.data, 
@@ -118,17 +135,25 @@ export const useAuthStore = create<AuthStore>((set) => ({
           balance: response.data.data.balance || 0,
           isInitialized: true,
         })
+        console.log(`[Auth] ✓ initAuth() COMPLETE (success)`)
       } else {
+        console.warn(`[Auth] ✗ Server response not successful, clearing token`)
         localStorage.removeItem('auth_token')
         setStoredAuthUser(null)
         set({ user: null, isAuthenticated: false, balance: 0, isInitialized: true })
+        console.log(`[Auth] ✓ initAuth() COMPLETE (invalid response)`)
       }
-    } catch (_error: any) {
+    } catch (error: any) {
+      console.warn(`[Auth] ✗ /auth/me failed:`, error.message)
       const storedUser = getStoredAuthUser()
       if (storedUser) {
+        console.log(`[Auth] ✓ Using stored user (offline), setting isInitialized=true`)
         set({ user: storedUser, isAuthenticated: true, balance: storedUser.balance || 0, isInitialized: true })
+        console.log(`[Auth] ✓ initAuth() COMPLETE (offline)`)
       } else {
+        console.log(`[Auth] ✓ No stored user, setting isInitialized=true`)
         set({ isInitialized: true })
+        console.log(`[Auth] ✓ initAuth() COMPLETE (offline, no user)`)
       }
     } finally {
       set({ isLoading: false })

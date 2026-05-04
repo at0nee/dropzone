@@ -16,12 +16,15 @@ const LoginPage: React.FC = () => {
     clearError()
 
     try {
-      if (isLogin) {
-        await login({ email, password })
+      const success = isLogin ? await login({ email, password }) : await register(email, password, username)
+      if (success) {
+        navigate('/')
       } else {
-        await register(email, password, username)
+        // Force staying on login page when auth fails (protect against external redirects)
+        navigate('/login', { replace: true })
+        const emailInput = document.querySelector('input[type="email"]') as HTMLInputElement | null
+        if (emailInput) emailInput.focus()
       }
-      navigate('/')
     } catch (_err) {
     }
   }
@@ -73,14 +76,14 @@ const LoginPage: React.FC = () => {
             />
           </div>
 
-          <button type="submit" className="btn-submit" disabled={isLoading}>
+          <button type="submit" className="auth-submit-btn" disabled={isLoading}>
             {isLoading ? 'Завантаження...' : isLogin ? 'Увійти' : 'Зареєструватися'}
           </button>
         </form>
 
         <div className="auth-footer">
-          <p>
-            {isLogin ? 'Немає аккаунту?' : 'Вже маєте аккаунт?'}
+          <div className="auth-switch-row">
+            <span>{isLogin ? 'Немає аккаунту?' : 'Вже маєте аккаунт?'}</span>
             <button
               type="button"
               className="toggle-btn"
@@ -91,13 +94,10 @@ const LoginPage: React.FC = () => {
             >
               {isLogin ? 'Зареєструватися' : 'Увійти'}
             </button>
-          </p>
+          </div>
         </div>
 
-        <div className="test-credentials">
-          <p className="note">🔌 Підключення працює через VITE_API_BASE_URL</p>
-          <p className="note">Форма логіну / реєстрації відправляє запити до бекенду</p>
-        </div>
+        
       </div>
     </div>
   )

@@ -85,24 +85,30 @@
   cursor: not-allowed;
 }
 
-.btn-submit {
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-  color: white;
-  border: none;
+.auth-submit-btn {
+  background: rgba(0, 212, 255, 0.12);
+  color: var(--accent-primary);
+  border: 1px solid rgba(0, 212, 255, 0.28);
   padding: 0.75rem;
   border-radius: 8px;
   font-weight: 600;
   font-size: 1rem;
   cursor: pointer;
-  transition: transform 0.3s, box-shadow 0.3s;
+  transition: all 0.3s;
+  width: 100%;
+  display: block;
+  text-align: center;
+  backdrop-filter: blur(10px);
 }
 
-.btn-submit:hover:not(:disabled) {
+.auth-submit-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 8px 16px rgba(99, 102, 241, 0.3);
+  background: rgba(0, 212, 255, 0.2);
+  border-color: rgba(0, 212, 255, 0.42);
+  box-shadow: 0 8px 24px rgba(0, 212, 255, 0.12);
 }
 
-.btn-submit:disabled {
+.auth-submit-btn:disabled {
   opacity: 0.7;
   cursor: not-allowed;
 }
@@ -119,16 +125,26 @@
   font-size: 0.9rem;
 }
 
+.auth-switch-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .toggle-btn {
   background: none;
   border: none;
   color: var(--accent-primary);
   cursor: pointer;
-  margin-left: 0.5rem;
+  display: block;
+  width: 100%;
+  margin: 0;
   font-weight: 600;
-  padding: 0;
+  padding: 0.5rem 0;
   text-decoration: underline;
   transition: color 0.3s;
+  text-align: center;
 }
 
 .toggle-btn:hover {

@@ -37,12 +37,13 @@ app.use(cors({ origin: true, credentials: true }))
 app.use(express.json())
 
 // Serve frontend static files (React dist) from root
-const distPath = path.join(__dirname, '..', 'dist')
+const distPath = path.join(__dirname, '..', '..', 'dropzone', 'dist')
 app.use(express.static(distPath))
 
 const asyncHandler = (fn: (req: Request, res: Response) => Promise<void>) => {
   return (req: Request, res: Response) => {
-    Promise.resolve(fn(req, res)).catch((_error) => {
+    Promise.resolve(fn(req, res)).catch((error) => {
+      console.error(error)
       res.status(500).json({ success: false, error: 'Internal server error' })
     })
   }
@@ -78,6 +79,8 @@ const getAuthUser = (db: Database, req: Request) => {
 const requireAuth = (db: Database, req: Request, res: Response) => {
   const user = getAuthUser(db, req)
   if (!user) {
+    const token = tokenFromRequest(req)
+    console.warn(`❌ Auth failed: token='${token?.slice(0, 8)}...' found=${sessions.has(token || '')}`)
     fail(res, 401, 'Unauthorized')
     return null
   }
@@ -211,6 +214,7 @@ const getOrCreateChatThread = (db: Database, sellerId: string, buyerId: string, 
   )
   
   if (thread) {
+    console.log(`🔎 Found existing chat thread ${thread.id} for participants=${participant1} & ${participant2} product=${product?.id || 'none'}`)
     return thread
   }
   
@@ -230,6 +234,7 @@ const getOrCreateChatThread = (db: Database, sellerId: string, buyerId: string, 
       messages: [],
     }
     db.chats.unshift(thread)
+    console.log(`➕ Created new chat thread ${thread.id} for participants=${participant1} & ${participant2} product=${product?.id || 'none'}`)
   }
   return thread
 }
@@ -308,6 +313,7 @@ app.post('/auth/register', asyncHandler(async (req, res) => {
   const token = makeToken()
   sessions.set(token, user.id)
   await upsertSession(token, user.id)
+  console.log(`✅ Реєстрація: ${email} → token '${token.slice(0, 8)}...', всього сесій: ${sessions.size}`)
   send(res, { token, user: publicUser(user) }, 201)
 }))
 
@@ -324,6 +330,7 @@ app.post('/auth/login', asyncHandler(async (req, res) => {
   const token = makeToken()
   sessions.set(token, user.id)
   await upsertSession(token, user.id)
+  console.log(`✅ Логін: ${email} (${user.role}) → token '${token.slice(0, 8)}...', всього сесій: ${sessions.size}`)
   send(res, { token, user: publicUser(user) })
 }))
 
@@ -518,7 +525,9 @@ app.put('/products/:id', asyncHandler(async (req, res) => {
 
   const product = db.products.find((item) => item.id === req.params.id)
   if (!product) return fail(res, 404, 'Product not found')
+  console.log(`PUT /products/${req.params.id} by user=${user.id} role=${user.role} product.seller_id=${product.seller_id}`)
   if (user.role !== 'admin' && product.seller_id !== user.id) {
+    console.log(`↩️ Forbidden product update attempt user=${user.id} role=${user.role} product=${product.id}`)
     return fail(res, 403, 'Forbidden')
   }
 
@@ -545,7 +554,9 @@ app.delete('/products/:id', asyncHandler(async (req, res) => {
   const index = db.products.findIndex((item) => item.id === req.params.id)
   if (index === -1) return fail(res, 404, 'Product not found')
   const target = db.products[index]
+  console.log(`DELETE /products/${req.params.id} by user=${user.id} role=${user.role} target.seller_id=${target.seller_id}`)
   if (user.role !== 'admin' && target.seller_id !== user.id) {
+    console.log(`↩️ Forbidden product delete attempt user=${user.id} role=${user.role} product=${target.id}`)
     return fail(res, 403, 'Forbidden')
   }
 
@@ -690,13 +701,13 @@ app.delete('/cart/items/:productId', asyncHandler(async (req, res) => {
 
 app.post('/cart/checkout', asyncHandler(async (req, res) => {
   const db = await ensureDb()
-  
+  console.log(`📨 POST /cart/checkout: incoming request from ${req.ip}`)
   const user = requireAuth(db, req, res)
   if (!user) {
-    
+    console.log(`❌ POST /cart/checkout: auth failed`)
     return
   }
-  
+  console.log(`✅ POST /cart/checkout: auth OK, user=${user.id} (${user.username})`)
 
   const cart = db.carts[user.id] || []
   if (!cart.length) return fail(res, 400, 'Cart is empty')
@@ -732,10 +743,12 @@ app.post('/cart/checkout', asyncHandler(async (req, res) => {
     
     // Escrow: deduct money from buyer (held in system, not given to seller yet)
     user.balance -= order.price
+    console.log(`💰 Escrow: deducted ${order.price} from buyer=${user.id}, balance=${user.balance}`)
     
     // Create chat thread and attach system message
     const thread = getOrCreateChatThread(db, product.seller_id, user.id, product)
     attachSystemMessage(thread, `🛍️ ${user.username} оформив покупку "${product.title}" за ${order.price} ₴`)
+    console.log(`🛒 Checkout: user=${user.id} created order=${order.id} product=${product.id} seller=${product.seller_id}`)
   }
 
   db.carts[user.id] = []
@@ -760,13 +773,13 @@ app.get('/orders', asyncHandler(async (req, res) => {
 
 app.post('/orders', asyncHandler(async (req, res) => {
   const db = await ensureDb()
-  
+  console.log(`📨 POST /orders: incoming request from ${req.ip}`)
   const user = requireAuth(db, req, res)
   if (!user) {
-    
+    console.log(`❌ POST /orders: auth failed`)
     return
   }
-  
+  console.log(`✅ POST /orders: auth OK, user=${user.id} (${user.username})`)
 
   const productId = normalizeText(req.body?.product_id)
   const quantity = Math.max(1, asNumber(req.body?.quantity, 1))
@@ -792,12 +805,13 @@ app.post('/orders', asyncHandler(async (req, res) => {
   
   // Escrow: deduct money from buyer (held in system, not given to seller yet)
   user.balance -= order.price
+  console.log(`💰 Escrow: deducted ${order.price} from buyer=${user.id}, balance=${user.balance}`)
   
   // Create chat thread and attach system message
   const thread = getOrCreateChatThread(db, product.seller_id, user.id, product)
   attachSystemMessage(thread, `🛍️ ${user.username} оформив покупку "${product.title}" за ${order.price} ₴`)
 
-  
+  console.log(`🛒 Order created: user=${user.id} order=${order.id} product=${product.id} seller=${product.seller_id}`)
   await saveDb(db)
   send(res, { order }, 201)
 }))
@@ -842,6 +856,7 @@ app.put('/orders/:id/status', asyncHandler(async (req, res) => {
     
     if (seller) {
       seller.balance += order.price
+      console.log(`💰 Order completed: escrow released to seller=${order.seller_id} balance=${seller.balance}`)
     }
   } else if (status === 'disputed') {
     // Dispute opened by user - money stays held (escrow)
@@ -852,6 +867,7 @@ app.put('/orders/:id/status', asyncHandler(async (req, res) => {
     if (product) {
       const thread = getOrCreateChatThread(db, order.seller_id, order.buyer_id, product)
       attachSystemMessage(thread, `🚨 СПІР ВІДКРИТО: ${user.username} відкрив спір щодо замовлення "${order.product_name}". На розгляді...`)
+      console.log(`⚠️ Dispute message added to chat thread ${thread.id}`)
     }
   }
   
@@ -864,7 +880,10 @@ app.get('/admin/disputes', asyncHandler(async (req, res) => {
   const user = requireRole(db, req, res, ['admin', 'support'])
   if (!user) return
 
-  
+  console.log(`🔍 GET /admin/disputes: total threads in DB = ${db.chats.length}`)
+  db.chats.slice(0, 5).forEach((t) => {
+    console.log(`   thread: ${t.id} seller=${t.seller_id} buyer=${t.buyer_id} messages=${t.messages?.length || 0}`)
+  })
 
   // Return disputed orders enriched with the related chat thread (full history)
   const disputes = db.orders
@@ -877,7 +896,10 @@ app.get('/admin/disputes', asyncHandler(async (req, res) => {
         return isMatch
       })
 
-      
+      console.log(`  📋 order=${order.id} seller=${order.seller_id} buyer=${order.buyer_id} → found=${threads.length} threads`)
+      threads.forEach((t, i) => {
+        console.log(`      [${i}] thread=${t.id} seller=${t.seller_id} buyer=${t.buyer_id} messages=${t.messages?.length || 0}`)
+      })
 
       // Combine messages from all matching threads and sort by timestamp
       const combinedMessages = threads
@@ -918,7 +940,7 @@ app.post('/admin/disputes/:id/messages', asyncHandler(async (req, res) => {
   const text = normalizeText(req.body?.text)
   if (!text) return fail(res, 400, 'Message text is required')
 
-  
+  console.log(`📨 POST /admin/disputes/:id/messages: user=${resolver.username} order=${order.id} seller=${order.seller_id} buyer=${order.buyer_id}`)
 
   const now = new Date().toISOString()
   const threads = db.chats.filter((t) => {
@@ -927,15 +949,18 @@ app.post('/admin/disputes/:id/messages', asyncHandler(async (req, res) => {
     return isMatch
   })
 
-  
+  console.log(`   Found ${threads.length} threads:`)
+  threads.forEach((t, i) => {
+    console.log(`   [${i}] thread=${t.id} seller=${t.seller_id} buyer=${t.buyer_id}`)
+  })
 
   const created: any[] = []
   if (threads.length === 0) {
     // If no existing threads, create one between buyer and seller
-    
+    console.log(`   No threads found, creating new thread...`)
     const product = db.products.find((p) => p.id === order.product_id)
     const thread = getOrCreateChatThread(db, order.seller_id, order.buyer_id, product)
-    
+    console.log(`   Created thread: ${thread.id} seller=${thread.seller_id} buyer=${thread.buyer_id}`)
     const message = {
       id: generateId('msg'),
       sender_id: resolver.id,
@@ -950,6 +975,7 @@ app.post('/admin/disputes/:id/messages', asyncHandler(async (req, res) => {
     created.push({ ...message, _chatId: thread.id })
   } else {
     threads.forEach((thread) => {
+      console.log(`   Adding message to thread: ${thread.id}`)
       const message = {
         id: generateId('msg'),
         sender_id: resolver.id,
@@ -991,6 +1017,7 @@ app.post('/admin/disputes/:id/resolve', asyncHandler(async (req, res) => {
   } else {
     if (seller) seller.balance += amount
     order.status = 'completed'
+    order.completed_at = order.completed_at || now
   }
 
   order.dispute_resolution = resolution as 'refund' | 'seller'
@@ -998,20 +1025,21 @@ app.post('/admin/disputes/:id/resolve', asyncHandler(async (req, res) => {
   order.dispute_resolved_at = now
 
   const thread = getOrCreateChatThread(db, order.seller_id, order.buyer_id)
-  const systemMessage = {
-    id: generateId('msg'),
-    sender_id: resolver.id,
-    sender_name: resolver.username,
-    sender_role: resolver.role,
-    text: `Dispute resolved: ${order.dispute_resolution}`,
-    timestamp: now,
-    isSystemMessage: true,
-  }
-  thread.messages.push(systemMessage)
-  thread.updated_at = now
+  attachSystemMessage(thread, `⚖️ Спір по замовленню ${order.id} вирішено: ${resolution === 'refund' ? 'кошти повернено покупцю' : 'кошти передано продавцю'}.`)
 
   await saveDb(db)
-  send(res, { order })
+  send(res, { users: db.users.map(publicUser), orders: db.orders, chats: db.chats, order })
+}))
+
+app.get('/chat/threads', asyncHandler(async (req, res) => {
+  const db = await ensureDb()
+  const user = requireAuth(db, req, res)
+  if (!user) return
+
+  // Only return threads where the authenticated user participates.
+  // Admin/support should not see all personal chats in the chat list.
+  const threads = db.chats.filter((thread) => thread.buyer_id === user.id || thread.seller_id === user.id)
+  send(res, threads)
 }))
 
 app.post('/chat/threads', asyncHandler(async (req, res) => {
@@ -1022,9 +1050,9 @@ app.post('/chat/threads', asyncHandler(async (req, res) => {
   const sellerId = normalizeText(req.body?.seller_id)
   const buyerId = normalizeText(req.body?.buyer_id) || user.id
   const productId = normalizeText(req.body?.product_id)
-  const product = productId ? db.products.find((p) => p.id === productId) : undefined
+  const product = productId ? db.products.find((item) => item.id === productId) : undefined
   const thread = getOrCreateChatThread(db, sellerId, buyerId, product)
-  
+  console.log(`POST /chat/threads: user=${user.id} requested seller=${sellerId} buyer=${buyerId} -> thread=${thread.id}`)
   await saveDb(db)
   send(res, thread, 201)
 }))
@@ -1073,10 +1101,6 @@ app.post('/chat/threads/:id/messages', asyncHandler(async (req, res) => {
   send(res, message, 201)
 }))
 
-app.get('/', asyncHandler(async (_req, res) => {
-  send(res, { name: 'Dropzone Backend', status: 'ok' })
-}))
-
 // SPA fallback: serve index.html for all non-API routes
 app.use((req, res, next) => {
   // If request doesn't match any API routes and doesn't have a file extension,
@@ -1089,24 +1113,29 @@ app.use((req, res, next) => {
 
 const bootstrap = async () => {
   const storedSessions = await loadSessions()
+  console.log(`📦 Завантажено ${storedSessions.size} сесій з MySQL`)
   storedSessions.forEach((userId, token) => {
     sessions.set(token, userId)
+    console.log(`   - токен: ${token.slice(0, 8)}... → userId: ${userId}`)
   })
+  console.log(`✅ Сесії завантажено в пам'ять. Всього в Map: ${sessions.size}`)
 
   const maxPortRetries = 20
 
   const startServer = (port: number, attempt = 0) => {
     const server = app.listen(port, '0.0.0.0', () => {
-      console.log(`Server listening at http://localhost:${port}`)
+      console.log(`Dropzone backend running on http://0.0.0.0:${port} (listen on all network interfaces)`)
     })
 
     server.on('error', (error: NodeJS.ErrnoException) => {
       if (error.code === 'EADDRINUSE' && attempt < maxPortRetries) {
         const nextPort = port + 1
+        console.warn(`Port ${port} is busy, retrying on ${nextPort}...`)
         startServer(nextPort, attempt + 1)
         return
       }
 
+      console.error('Failed to start backend server:', error)
       process.exit(1)
     })
   }

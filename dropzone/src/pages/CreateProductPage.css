@@ -1,0 +1,256 @@
+.create-product-page {
+  min-height: 100vh;
+  background: var(--bg-primary);
+  padding: 2rem 1rem;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  margin-bottom: 2rem;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid rgba(0, 212, 255, 0.15);
+}
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(0, 212, 255, 0.1);
+  border: 1px solid rgba(0, 212, 255, 0.25);
+  color: var(--accent-primary);
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s;
+}
+
+.back-btn:hover {
+  background: rgba(0, 212, 255, 0.2);
+  border-color: rgba(0, 212, 255, 0.4);
+}
+
+.page-header h1 {
+  flex: 1;
+  font-size: 2rem;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.product-form {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.form-section {
+  background: var(--bg-secondary);
+  border: 1px solid rgba(0, 212, 255, 0.15);
+  border-radius: 12px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+}
+
+.form-section h2 {
+  font-size: 1.2rem;
+  color: var(--text-primary);
+  margin: 0 0 1.5rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.form-group:last-child {
+  margin-bottom: 0;
+}
+
+.form-group label {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+  background-color: var(--bg-tertiary);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-family: inherit;
+  transition: all 0.3s;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: rgba(0, 212, 255, 0.4);
+  background-color: rgba(0, 212, 255, 0.05);
+  box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+}
+
+/* Стилі для option елементів */
+.form-group select option {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  padding: 0.5rem;
+}
+
+.form-group select option:hover {
+  background: linear-gradient(#206, #206);
+  background-color: #206;
+}
+
+.form-group select option:checked {
+  background: linear-gradient(#00d4ff, #0099ff);
+  background-color: #00d4ff;
+  color: var(--bg-primary);
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .page-header h1 {
+    font-size: 1.5rem;
+  }
+}
+
+.image-preview {
+  display: flex;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(0, 212, 255, 0.05);
+  border: 1px dashed rgba(0, 212, 255, 0.25);
+  border-radius: 8px;
+  margin-top: 1rem;
+}
+
+.image-preview img {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 8px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  padding-top: 2rem;
+  border-top: 1px solid rgba(0, 212, 255, 0.15);
+}
+
+.btn-cancel {
+  background: rgba(0, 212, 255, 0.1);
+  border: 1px solid rgba(0, 212, 255, 0.25);
+  color: var(--accent-primary);
+  padding: 0.85rem 2rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-cancel:hover {
+  background: rgba(0, 212, 255, 0.15);
+  border-color: rgba(0, 212, 255, 0.35);
+}
+
+.btn-submit {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 153, 255, 0.2));
+  border: 1px solid rgba(0, 212, 255, 0.3);
+  color: var(--accent-primary);
+  padding: 0.85rem 2rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-size: 1rem;
+}
+
+.btn-submit:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.3), rgba(0, 153, 255, 0.3));
+  border-color: rgba(0, 212, 255, 0.5);
+  box-shadow: 0 4px 12px rgba(0, 212, 255, 0.15);
+}
+
+.btn-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Normalize select appearance and remove white focus border/popup */
+.form-group select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 8px;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Remove native inner focus (WebKit) */
+.form-group select::-webkit-focus-inner {
+  border: 0;
+  padding: 0;
+}
+
+/* Remove IE/Edge native expand and focus artifacts */
+.form-group select::-ms-expand {
+  display: none;
+}
+
+/* Focus state — subtle accent, no white halo */
+.form-group select:focus {
+  outline: none;
+  box-shadow: none;
+  border-color: rgba(0, 212, 255, 0.4);
+  background-color: rgba(0, 212, 255, 0.03);
+}
+
+/* Ensure options inherit dark theme and don't show white background */
+.form-group select option {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+/* Hover / selected option */
+.form-group select option:hover,
+.form-group select option:checked {
+  background-color: rgba(0, 212, 255, 0.12);
+  color: var(--text-primary);
+}

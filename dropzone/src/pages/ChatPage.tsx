@@ -36,8 +36,10 @@ const ChatPage: React.FC = () => {
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null)
   const [messageText, setMessageText] = useState('')
   const [loading, setLoading] = useState(false)
+  const messagesAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const CHAT_READ_STATE_EVENT = 'chat-read-state-changed'
+  const stickToBottomRef = useRef(true)
 
   const getReadStateKey = () => `chat-read-state:${user?.id || 'guest'}`
 
@@ -179,9 +181,20 @@ const ChatPage: React.FC = () => {
   }, [isAuthenticated, isInitialized, navigate, sellerId])
 
   useEffect(() => {
-    // Скролювати вниз при новому повідомленні
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [selectedChat?.messages])
+    const messagesArea = messagesAreaRef.current
+    if (!messagesArea || !selectedChat) return
+
+    const lastMessage = selectedChat.messages[selectedChat.messages.length - 1]
+    if (!lastMessage) return
+
+    const nearBottom = messagesArea.scrollHeight - messagesArea.scrollTop - messagesArea.clientHeight < 120
+    const shouldStickToBottom = stickToBottomRef.current || nearBottom
+
+    if (shouldStickToBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      stickToBottomRef.current = true
+    }
+  }, [selectedChat?.id, selectedChat?.messages.length, selectedChat?.messages[selectedChat.messages.length - 1]?.id])
 
   const handleSendMessage = async () => {
     if (!messageText.trim() || !selectedChat || !user) return
@@ -281,7 +294,15 @@ const ChatPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="messages-area">
+              <div
+                className="messages-area"
+                ref={messagesAreaRef}
+                onScroll={() => {
+                  const messagesArea = messagesAreaRef.current
+                  if (!messagesArea) return
+                  stickToBottomRef.current = messagesArea.scrollHeight - messagesArea.scrollTop - messagesArea.clientHeight < 120
+                }}
+              >
                 {selectedChat.messages.map((msg) => (
                   <div
                     key={msg.id}

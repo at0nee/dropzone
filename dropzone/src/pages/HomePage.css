@@ -155,23 +155,36 @@
   display: flex;
   gap: 1rem;
   overflow-x: auto;
-  padding-bottom: 0.5rem;
+  padding: 0.25rem 0 0.85rem;
   scroll-snap-type: x mandatory;
   scrollbar-width: thin;
+  scrollbar-color: rgba(0, 212, 255, 0.45) rgba(0, 212, 255, 0.08);
   width: 100%;
+  scroll-padding-inline: 0.25rem;
 }
 
 .popular-carousel::-webkit-scrollbar {
-  height: 8px;
+  height: 10px;
 }
 
 .popular-carousel::-webkit-scrollbar-track {
-  background: transparent;
+  background: linear-gradient(180deg, rgba(0, 212, 255, 0.04), rgba(0, 212, 255, 0.08));
+  border-radius: 999px;
 }
 
 .popular-carousel::-webkit-scrollbar-thumb {
-  background: rgba(0, 212, 255, 0.18);
+  background: linear-gradient(180deg, rgba(0, 212, 255, 0.65), rgba(0, 153, 255, 0.45));
   border-radius: 999px;
+  border: 2px solid rgba(10, 16, 24, 0.9);
+  box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.16), 0 4px 16px rgba(0, 212, 255, 0.18);
+}
+
+.popular-carousel::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(0, 212, 255, 0.85), rgba(0, 153, 255, 0.62));
+}
+
+.popular-carousel::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .popular-card {

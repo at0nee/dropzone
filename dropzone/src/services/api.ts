@@ -18,6 +18,9 @@ api.interceptors.request.use((config) => {
   const token = localStorage.getItem('auth_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+    console.log(`[API] Adding token to request: ${config.url}, token: ${token.slice(0, 8)}...`)
+  } else {
+    console.warn(`[API] No token found for request: ${config.url}`)
   }
   return config
 })
@@ -70,6 +73,10 @@ export const productService = {
   create: (data: Partial<Product>) => api.post<ApiResponse<Product>>('/products', data),
   update: (id: string, data: Partial<Product>) => api.put<ApiResponse<Product>>(`/products/${id}`, data),
   delete: (id: string) => api.delete<ApiResponse<void>>(`/products/${id}`),
+  
+  // Public popular products (global)
+  getPopular: () => api.get<ApiResponse<Product[]>>('/public/popular-products'),
+  getHomeSummary: () => api.get<ApiResponse<{ completedPurchasesCount: number; popularProducts: Product[]; salesCountBySeller?: Record<string, number>; salesCountByProduct?: Record<string, number> }>>('/public/home-summary'),
 }
 
 // Cart endpoints

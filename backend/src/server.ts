@@ -104,6 +104,45 @@ const asNumber = (value: unknown, fallback = 0) => {
 
 const normalizeText = (value: unknown) => String(value || '').trim()
 
+const getGlobalHomeSummary = (db: Database) => {
+  const completedOrders = (db.orders || []).filter((order) => order.status === 'completed')
+
+  const salesCountByProduct = new Map<string, number>()
+  const salesCountBySeller = new Map<string, number>()
+
+  completedOrders.forEach((order) => {
+    salesCountByProduct.set(order.product_id, (salesCountByProduct.get(order.product_id) || 0) + 1)
+    salesCountBySeller.set(order.seller_id, (salesCountBySeller.get(order.seller_id) || 0) + 1)
+  })
+
+  const visibleProducts = (db.products || []).filter((product) => Number(product.stock || 0) > 0)
+
+  const popularProducts = [...visibleProducts]
+    .map((product) => ({
+      product,
+      sales: salesCountByProduct.get(product.id) || 0,
+    }))
+    .sort((a, b) => {
+      if (b.sales !== a.sales) return b.sales - a.sales
+      return new Date(b.product.created_at).getTime() - new Date(a.product.created_at).getTime()
+    })
+    .filter((item) => item.sales > 0)
+    .slice(0, 8)
+    .map((item) => publicProduct(item.product, db))
+
+  const fallbackPopularProducts = [...visibleProducts]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 8)
+    .map((product) => publicProduct(product, db))
+
+  return {
+    completedPurchasesCount: completedOrders.length,
+    popularProducts: popularProducts.length > 0 ? popularProducts : fallbackPopularProducts,
+    salesCountByProduct: Object.fromEntries(salesCountByProduct),
+    salesCountBySeller: Object.fromEntries(salesCountBySeller),
+  }
+}
+
 const calculateSellerStats = (db: Database, sellerId: string) => {
   const sellerReviews = db.reviews.filter((review) => review.seller_id === sellerId)
   const seller = db.users.find((user) => user.id === sellerId)
@@ -769,6 +808,19 @@ app.get('/orders', asyncHandler(async (req, res) => {
     ? db.orders
     : db.orders.filter((order) => order.buyer_id === user.id || order.seller_id === user.id)
   send(res, items)
+}))
+
+// Public endpoint: global homepage summary shared by all users
+app.get('/public/home-summary', asyncHandler(async (req, res) => {
+  const db = await ensureDb()
+  send(res, getGlobalHomeSummary(db))
+}))
+
+// Backward-compatible endpoint: just the popular products list
+app.get('/public/popular-products', asyncHandler(async (req, res) => {
+  const db = await ensureDb()
+  const summary = getGlobalHomeSummary(db)
+  send(res, summary.popularProducts)
 }))
 
 app.post('/orders', asyncHandler(async (req, res) => {

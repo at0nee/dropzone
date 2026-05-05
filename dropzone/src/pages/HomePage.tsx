@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowRight, Package, Rocket, ShieldCheck, ShoppingBag, Star, TrendingUp, Users } from 'lucide-react'
 import ProductCard from '../components/ProductCard/ProductCard'
 import { Product } from '../types'
-import facade from '../services/facade'
-import { useAuthStore } from '../stores/authStore'
+import facade, { getHomeSummary } from '../services/facade'
 import { getReviewMetricsForSeller, ReviewLike } from '../utils/reviewMetrics'
 import './HomePage.css'
 
@@ -18,74 +17,50 @@ interface SellerLeaderboardItem {
 
 const HomePage: React.FC = () => {
   const navigate = useNavigate()
-  const { isAuthenticated } = useAuthStore()
   const popularCarouselRef = useRef<HTMLDivElement>(null)
   const [allProducts, setAllProducts] = useState<Product[]>([])
-  const [completedOrders, setCompletedOrders] = useState<any[]>([])
   const [reviews, setReviews] = useState<ReviewLike[]>([])
+  const [popularFromServer, setPopularFromServer] = useState<Product[]>([])
+  const [completedPurchasesCount, setCompletedPurchasesCount] = useState(0)
+  const [salesCountBySellerSummary, setSalesCountBySellerSummary] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchProducts = async () => {
       try {
         const products = await facade.fetchProducts()
-        
-        // Only fetch orders if authenticated (to avoid 401 errors)
-        let savedOrders: any[] = []
-        if (isAuthenticated) {
-          savedOrders = await facade.getOrders()
-        }
-        
         const savedReviews = await facade.getAllReviews()
+        const summary = await getHomeSummary()
 
-        setCompletedOrders((savedOrders || []).filter((order: any) => order.status === 'completed'))
         setReviews((Array.isArray(savedReviews) ? savedReviews : savedReviews?.data) || [])
         setAllProducts(((Array.isArray(products) ? products : products?.data) || []).filter((product: any) => Number(product.stock || 0) > 0))
-      } catch (_error) {
-        setCompletedOrders([])
+        setCompletedPurchasesCount(summary.completedPurchasesCount || 0)
+        setSalesCountBySellerSummary(summary.salesCountBySeller || {})
+        setPopularFromServer((summary.popularProducts || []) as Product[])
+      } catch (error) {
+        console.error('Failed to fetch products:', error)
         setReviews([])
         setAllProducts([])
+        setPopularFromServer([])
+        setCompletedPurchasesCount(0)
+        setSalesCountBySellerSummary({})
       } finally {
         setLoading(false)
       }
     }
 
     fetchProducts()
-  }, [isAuthenticated])
+  }, [])
 
   const popularProducts = useMemo(() => {
-    const salesCountByProduct = new Map<string, number>()
-    completedOrders.forEach((order: any) => {
-      const productId = order.product_id
-      salesCountByProduct.set(productId, (salesCountByProduct.get(productId) || 0) + 1)
-    })
-
-    const rankedBySales = [...allProducts]
-      .map((product) => ({
-        product,
-        sales: salesCountByProduct.get(product.id) || 0,
-      }))
-      .sort((a, b) => {
-        if (b.sales !== a.sales) return b.sales - a.sales
-        if (b.product.rating !== a.product.rating) return b.product.rating - a.product.rating
-        return b.product.reviews_count - a.product.reviews_count
-      })
-      .filter((item) => item.sales > 0)
-      .slice(0, 8)
-      .map((item) => item.product)
-
-    if (rankedBySales.length > 0) {
-      return rankedBySales
-    }
+    if (popularFromServer.length > 0) return popularFromServer
 
     return [...allProducts]
       .sort((a, b) => {
-        if (b.rating !== a.rating) return b.rating - a.rating
-        if (b.reviews_count !== a.reviews_count) return b.reviews_count - a.reviews_count
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       })
       .slice(0, 8)
-  }, [allProducts, completedOrders])
+  }, [allProducts, popularFromServer])
 
   const sellerLeaderboards = useMemo(() => {
     const sellerMeta = new Map<string, { username: string; rating: number; reviewsCount: number }>()
@@ -104,9 +79,8 @@ const HomePage: React.FC = () => {
       }
     })
 
-    completedOrders.forEach((order: any) => {
-      const sellerId = order.seller_id
-      salesCountBySeller.set(sellerId, (salesCountBySeller.get(sellerId) || 0) + 1)
+    Object.entries(salesCountBySellerSummary).forEach(([sellerId, sales]) => {
+      salesCountBySeller.set(sellerId, Number(sales) || 0)
     })
 
     const sellers: SellerLeaderboardItem[] = Array.from(sellerMeta.entries()).map(([sellerId, meta]) => ({
@@ -139,20 +113,19 @@ const HomePage: React.FC = () => {
       .slice(0, 5)
 
     return { bySales, byReviews }
-  }, [allProducts, completedOrders, reviews])
+  }, [allProducts, salesCountBySellerSummary, reviews])
 
   const homepageStats = useMemo(() => {
-    const totalSales = completedOrders.length
     const uniqueSellers = new Set(allProducts.map((product) => product.seller_id)).size
     const uniqueCategories = new Set(allProducts.map((product) => product.category)).size
 
     return [
       { label: 'Товарів у каталозі', value: allProducts.length, icon: <Package size={18} /> },
-      { label: 'Завершених покупок', value: totalSales, icon: <ShoppingBag size={18} /> },
+      { label: 'Завершених покупок', value: completedPurchasesCount, icon: <ShoppingBag size={18} /> },
       { label: 'Активних продавців', value: uniqueSellers, icon: <Users size={18} /> },
       { label: 'Категорій', value: uniqueCategories, icon: <Star size={18} /> },
     ]
-  }, [allProducts, completedOrders])
+  }, [allProducts, completedPurchasesCount])
 
   const scrollPopular = (direction: 'left' | 'right') => {
     const container = popularCarouselRef.current
@@ -194,6 +167,14 @@ const HomePage: React.FC = () => {
           </div>
           {loading ? (
             <div className="loading">Завантаження...</div>
+          ) : (popularFromServer.length > 0 ? (
+            <div className="popular-carousel" ref={popularCarouselRef}>
+              {popularFromServer.map((product) => (
+                <div className="popular-card" key={product.id}>
+                  <ProductCard product={product} />
+                </div>
+              ))}
+            </div>
           ) : popularProducts.length > 0 ? (
             <div className="popular-carousel" ref={popularCarouselRef}>
               {popularProducts.map((product) => (
@@ -206,7 +187,7 @@ const HomePage: React.FC = () => {
             <div className="empty-state">
               <p>Поки немає завершених покупок, щоб показати популярні товари.</p>
             </div>
-          )}
+          ))}
         </section>
 
         <section className="stats-section">

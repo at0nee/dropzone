@@ -1,6 +1,13 @@
 import { productService, reviewService, userService, cartService, chatService, ordersService } from './api'
 import * as adminData from '../utils/adminData'
 
+type HomeSummaryPayload = {
+  completedPurchasesCount: number
+  popularProducts: any[]
+  salesCountBySeller?: Record<string, number>
+  salesCountByProduct?: Record<string, number>
+}
+
 const safeApiCall = async <T>(fn: () => Promise<any>, fallback: T): Promise<T> => {
   try {
     const res = await fn()
@@ -200,6 +207,38 @@ export const getAllReviews = async () => {
   }
 }
 
+export const getPopularProducts = async () => {
+  try {
+    const summary = await getHomeSummary()
+    return summary.popularProducts ?? []
+  } catch (err) {
+    // Fallback to stored products (first N)
+    const fallback = adminData.getStoredProducts() || []
+    return (Array.isArray(fallback) ? fallback : [])?.slice(0, 8)
+  }
+}
+
+export const getHomeSummary = async (): Promise<HomeSummaryPayload> => {
+  try {
+    const res = await productService.getHomeSummary()
+    const payload = res.data.data ?? (res.data as any)
+    return {
+      completedPurchasesCount: Number(payload?.completedPurchasesCount || 0),
+      popularProducts: Array.isArray(payload?.popularProducts) ? payload.popularProducts : [],
+      salesCountBySeller: payload?.salesCountBySeller || {},
+      salesCountByProduct: payload?.salesCountByProduct || {},
+    }
+  } catch {
+    const fallbackProducts = adminData.getStoredProducts() || []
+    return {
+      completedPurchasesCount: adminData.getStoredOrders().filter((order: any) => order.status === 'completed').length,
+      popularProducts: (Array.isArray(fallbackProducts) ? fallbackProducts : []).slice(0, 8),
+      salesCountBySeller: {},
+      salesCountByProduct: {},
+    }
+  }
+}
+
 export const getReviewsBySeller = async (sellerId: string) => {
   try {
     const res = await reviewService.getBySeller(sellerId)
@@ -294,7 +333,9 @@ export default {
   sendMessageToSeller,
   getAllReviews,
   getReviewsBySeller,
+  getHomeSummary,
   getOrders,
+  getPopularProducts,
   saveOrders,
   updateOrderStatus,
   createOrder,

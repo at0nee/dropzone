@@ -1,40 +1,26 @@
 # Dropzone Backend
 
-Найпростіший backend для Dropzone на `Node.js + Express + TypeScript + MySQL`.
-
-Ідея спеціально проста:
-- фронтенд лишається без змін;
-- backend працює через той самий API контракт;
-- збереження даних іде в MySQL;
-- вся аплікація зберігає стан у **одному JSON-рядку в таблиці `app_state`**.
-
-Це швидкий спосіб запустити реальний backend без ORM, без окремих міграцій і без складного domain-рівня.
+Це основний сервер проєкту Dropzone. Він піднімає API, працює з MySQL, зберігає стан застосунку та в production-style режимі віддає вже зібраний фронтенд із `dropzone/dist`.
 
 ---
 
-## 1. Що тут є
+## Що тут є
 
-- `src/server.ts` — HTTP API.
-- `src/db.ts` — MySQL-обгортка, seed-дані, завантаження та збереження стану.
-- `docker-compose.yml` — підйом MySQL одним викликом.
-- `.env.example` — приклад змінних середовища.
+- `src/server.ts` — HTTP API, статична віддача фронтенда, логіка замовлень, чату, спорів і homepage summary.
+- `src/db.ts` — MySQL-шар, seed-дані, завантаження та збереження стану.
+- `docker-compose.yml` — підйом MySQL через Docker Compose.
+- `.env.example` — шаблон для локального `.env`; його можна скопіювати та підставити свої значення.
 
 ---
 
-## 2. Швидкий старт
+## Запуск
 
-### Варіант A: через Docker Compose
+### Варіант 1: локальний MySQL
 
-1. Підняти MySQL:
-
-```bash
-docker compose up -d
-```
-
-2. Створити `.env` на основі `.env.example`:
+1. Підготувати `.env` у директорії `backend/`:
 
 ```env
-PORT=3000
+PORT=3007
 MYSQL_HOST=127.0.0.1
 MYSQL_PORT=3306
 MYSQL_USER=root
@@ -42,33 +28,76 @@ MYSQL_PASSWORD=root
 MYSQL_DATABASE=dropzone
 ```
 
-3. Запустити backend:
+2. Запустити сервер:
 
 ```bash
 npm install
 npm run dev
 ```
 
-### Варіант B: свій MySQL
+### Варіант 2: Docker Compose для MySQL
 
-Якщо MySQL уже є, просто створіть базу `dropzone`, а потім вкажіть свої дані в `.env`.
+```bash
+docker compose up -d
+```
 
----
-
-## 3. Скрипти
+Після цього backend запускається тим самим способом:
 
 ```bash
 npm install
 npm run dev
-npm run check
+```
+
+---
+
+## Скрипти
+
+```bash
+npm run dev
 npm run start
+npm run check
 ```
 
 ---
 
-## 4. Дефолтні акаунти
+## Як працює застосунок
 
-Після першого запуску backend сам створює seed-дані.
+- backend запускається одним процесом із `src/server.ts`
+- фронтенд окремо збирається у `dropzone/dist`
+- після збірки backend віддає фронтенд як статичний сайт
+- у розробці фронтенд може ходити в API через `VITE_API_BASE_URL`
+- якщо `.env` ще не створено, за основу можна взяти `.env.example`
+
+У проєкті вже враховані:
+
+- stock для товарів
+- списання stock під час checkout
+- глобальна homepage summary для однакових метрик у всіх акаунтів
+- популярні товари, які рахуються з бекенда
+- support/admin flow для спорів
+- чат покупець / продавець
+
+---
+
+## Модель даних
+
+Поточна схема зберігання побудована навколо MySQL і JSON-стану застосунку.
+
+Ключові сутності:
+
+- users
+- products
+- orders
+- reviews
+- chats
+- sessions
+- catalog categories
+
+Під час seed-ініціалізації створюються базові демо-акаунти та стартові дані для каталогу.
+
+---
+
+## Демо-акаунти
 
 - `admin@dropzone.local` / `admin123`
 - `support@dropzone.local` / `support123`
@@ -77,24 +106,9 @@ npm run start
 
 ---
 
-## 5. Як зберігаються дані
+## API
 
-У MySQL створюється одна таблиця:
-
-- `app_state`
-
-Вона містить:
-- `id` — завжди `1`
-- `payload` — весь стан застосунку у вигляді JSON
-- `updated_at` — час останнього збереження
-
-Тобто це свідомо найпростіша схема: не ORM, не десяток таблиць, а один JSON-стан у MySQL.
-
----
-
-## 6. Контракт API
-
-Усі відповіді повертаються у форматі:
+Відповіді мають стандартний формат:
 
 ```json
 { "success": true, "data": ... }
@@ -113,7 +127,7 @@ npm run start
 - `POST /auth/logout`
 - `GET /auth/me`
 
-### Продукти
+### Товари
 
 - `GET /products`
 - `GET /products/:id`
@@ -121,18 +135,7 @@ npm run start
 - `PUT /products/:id`
 - `DELETE /products/:id`
 
-### Відгуки
-
-- `GET /reviews?product_id=...`
-- `POST /reviews`
-
-### Користувачі
-
-- `GET /users`
-- `GET /users/:id`
-- `PUT /users/:id`
-
-### Кошик
+### Кошик і checkout
 
 - `GET /cart`
 - `POST /cart/items`
@@ -146,10 +149,10 @@ npm run start
 - `GET /orders/:id`
 - `PUT /orders/:id/status`
 
-### Адмін / спори
+### Відгуки
 
-- `GET /admin/disputes`
-- `POST /admin/disputes/:id/resolve`
+- `GET /reviews?product_id=...`
+- `POST /reviews`
 
 ### Чат
 
@@ -158,38 +161,56 @@ npm run start
 - `GET /chat/threads/:id/messages`
 - `POST /chat/threads/:id/messages`
 
-### Healthcheck
+### Адмін і спори
+
+- `GET /admin/disputes`
+- `POST /admin/disputes/:id/resolve`
+
+### Головна сторінка
+
+- `GET /public/home-summary`
+- `GET /public/popular-products`
+
+### Службові маршрути
 
 - `GET /health`
 
 ---
 
-## 7. Що важливо для фронтенду
+## Що важливо для фронтенду
 
-Фронтенд уже очікує такі ключові речі:
-- `auth_token` у `localStorage` після логіну;
-- `Authorization: Bearer <token>` у запитах;
-- поле `data` у всіх успішних відповідях;
-- поля `items`, `total`, `page`, `pageSize` для каталогу;
-- `seller` у відповіді товару;
-- `username`, `role`, `balance`, `rating`, `reviews_count` у користувача.
+Фронтенд очікує такі речі:
 
----
-
-## 8. Якщо захочеш ще простіше
-
-Потім можна перейти від цього JSON-стану до повної реляційної схеми:
-- Prisma + MySQL/PostgreSQL;
-- окремі таблиці для users/products/orders/reviews/chats;
-- міграції;
-- JWT / refresh tokens;
-- WebSocket для чату.
-
-Для старту це не потрібно.
+- `Authorization: Bearer <token>` у запитах після логіну
+- `auth_token` у `localStorage`
+- `seller` у відповіді товару
+- `data` у всіх успішних відповідях
+- `items`, `total`, `page`, `pageSize` для каталогу
+- `username`, `role`, `balance`, `rating`, `reviews_count` у користувача
 
 ---
 
-## 9. Перевірка
+## Production-style запуск
+
+1. Зібрати фронтенд:
+
+```bash
+cd ../dropzone
+npm run build
+```
+
+2. Запустити backend:
+
+```bash
+cd ../backend
+npm run start
+```
+
+Після цього сервер віддає фронтенд із `dropzone/dist`.
+
+---
+
+## Перевірка
 
 ```bash
 npm run check
@@ -199,6 +220,9 @@ npm run check
 npm run dev
 ```
 
-Після запуску перевір:
-- `GET http://localhost:3000/health`
-- `POST http://localhost:3000/auth/login`
+Корисні запити після запуску:
+
+- `GET http://localhost:3007/health`
+- `POST http://localhost:3007/auth/login`
+- `GET http://localhost:3007/public/home-summary`
+

@@ -121,6 +121,8 @@ const pool = mysql.createPool({
   user: process.env.MYSQL_USER || 'root',
   password: process.env.MYSQL_PASSWORD || 'root',
   database: STATE_DB,
+  timezone: 'Z',
+  dateStrings: true,
   waitForConnections: true,
   connectionLimit: 10,
   enableKeepAlive: true,
@@ -139,8 +141,28 @@ const SESSIONS_TABLE = 'sessions'
 const CATALOG_CATEGORIES_TABLE = 'catalog_categories'
 
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex')
+
+const parseDateInput = (value: string | Date) => {
+  if (value instanceof Date) return value
+
+  const raw = String(value || '').trim()
+  if (!raw) return new Date(NaN)
+
+  // MySQL DATETIME has no timezone. Treat it as UTC to prevent repeated -timezone drift.
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)) {
+    return new Date(raw.replace(' ', 'T') + 'Z')
+  }
+
+  // ISO-like string without timezone suffix -> treat as UTC as well.
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?$/.test(raw)) {
+    return new Date(raw + 'Z')
+  }
+
+  return new Date(raw)
+}
+
 const toMysqlDateTime = (value: string | Date) => {
-  const date = value instanceof Date ? value : new Date(value)
+  const date = parseDateInput(value)
   if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 19).replace('T', ' ')
   return date.toISOString().slice(0, 19).replace('T', ' ')
 }
@@ -349,8 +371,22 @@ const ensureSchema = async () => {
 
 const mapDate = (value: any) => {
   if (!value) return new Date().toISOString()
-  if (value instanceof Date) return value.toISOString()
-  return new Date(value).toISOString()
+  if (value instanceof Date) {
+    // Defensive normalization for DATETIME values that may arrive as local Date objects.
+    // Rebuild as UTC using wall-clock fields to prevent repeated timezone drift.
+    return new Date(Date.UTC(
+      value.getFullYear(),
+      value.getMonth(),
+      value.getDate(),
+      value.getHours(),
+      value.getMinutes(),
+      value.getSeconds(),
+      value.getMilliseconds(),
+    )).toISOString()
+  }
+  const parsed = parseDateInput(String(value))
+  if (Number.isNaN(parsed.getTime())) return new Date().toISOString()
+  return parsed.toISOString()
 }
 
 const toJsonArray = (value: any): string[] => {

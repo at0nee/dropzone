@@ -67,11 +67,16 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   }
 
   const handleTopUp = () => {
-    if (topUpAmount && selectedPaymentMethod) {
-      setTopUpAmount('')
-      setBalanceMenuOpen(false)
-      alert('✅ Баланс поповнено на ' + topUpAmount + '₴')
-    }
+    const amount = Number(topUpAmount)
+    if (!Number.isFinite(amount) || amount <= 0 || !selectedPaymentMethod) return
+
+    setBalanceMenuOpen(false)
+    navigate('/balance/topup', {
+      state: {
+        amount,
+        paymentMethod: selectedPaymentMethod,
+      },
+    })
   }
 
   const getReadStateKey = () => `chat-read-state:${user?.id || 'guest'}`

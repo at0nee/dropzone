@@ -28,6 +28,55 @@ interface Chat {
   messages: Message[]
 }
 
+const parseChatTimestamp = (value: unknown): Date => {
+  if (value instanceof Date) return value
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    // Accept both seconds and milliseconds epoch.
+    const ms = value < 1e12 ? value * 1000 : value
+    return new Date(ms)
+  }
+
+  const raw = String(value || '').trim()
+  if (!raw) return new Date(0)
+
+  // Numeric timestamp in string form.
+  if (/^\d{10,13}$/.test(raw)) {
+    const n = Number(raw)
+    const ms = raw.length === 10 ? n * 1000 : n
+    return new Date(ms)
+  }
+
+  // Legacy format support: "YYYY-MM-DD HH:mm:ss" -> local time parse.
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(raw)) {
+    return new Date(raw.replace(' ', 'T') + 'Z')
+  }
+
+  // ISO-like string without timezone suffix -> treat as UTC.
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?$/.test(raw)) {
+    return new Date(raw + 'Z')
+  }
+
+  return new Date(raw)
+}
+
+const formatChatTime = (value: unknown): string => {
+  const parsed = parseChatTimestamp(value)
+  if (Number.isNaN(parsed.getTime())) return '--:--'
+
+  const now = new Date()
+  const isSameDay = parsed.toDateString() === now.toDateString()
+  const timePart = parsed.toLocaleTimeString('uk-UA', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+
+  if (isSameDay) return timePart
+
+  return `${parsed.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' })} ${timePart}`
+}
+
 const ChatPage: React.FC = () => {
   const { sellerId } = useParams<{ sellerId?: string }>()
   const navigate = useNavigate()
@@ -77,7 +126,7 @@ const ChatPage: React.FC = () => {
     return chat.messages.filter((message) => {
       if (message.sender_id === user?.id || message.sender_id === 'system') return false
       if (!lastReadAt) return true
-      return new Date(message.timestamp).getTime() > new Date(lastReadAt).getTime()
+      return parseChatTimestamp(message.timestamp).getTime() > parseChatTimestamp(lastReadAt).getTime()
     }).length
   }
 
@@ -85,7 +134,7 @@ const ChatPage: React.FC = () => {
     return [...items].sort((a: Chat, b: Chat) => {
       const aLastMsg = a.messages[a.messages.length - 1]?.timestamp || a.created_at || new Date(0).toISOString()
       const bLastMsg = b.messages[b.messages.length - 1]?.timestamp || b.created_at || new Date(0).toISOString()
-      return new Date(bLastMsg).getTime() - new Date(aLastMsg).getTime()
+      return parseChatTimestamp(bLastMsg).getTime() - parseChatTimestamp(aLastMsg).getTime()
     })
   }
 
@@ -268,10 +317,7 @@ const ChatPage: React.FC = () => {
                         <strong>{lastMessage.sender_id === user?.id ? 'Ви' : sanitizeDisplayName(lastMessage.sender_name)}:</strong> {lastMessage.text}
                       </p>
                       <small className="message-time">
-                        {new Date(lastMessage.timestamp).toLocaleTimeString('uk-UA', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
+                        {formatChatTime(lastMessage.timestamp)}
                       </small>
                     </>
                   )}
@@ -321,10 +367,7 @@ const ChatPage: React.FC = () => {
                     <div className="message-content">
                       <p>{msg.text}</p>
                       <small>
-                        {new Date(msg.timestamp).toLocaleTimeString('uk-UA', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
+                        {formatChatTime(msg.timestamp)}
                       </small>
                     </div>
                   </div>

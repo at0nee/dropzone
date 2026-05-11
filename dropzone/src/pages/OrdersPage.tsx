@@ -35,6 +35,14 @@ const OrdersPage: React.FC = () => {
   const [submittingReview, setSubmittingReview] = useState(false)
   const REVIEW_COMMENT_MAX = 100
 
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1)
+      return
+    }
+    navigate('/profile')
+  }
+
   useEffect(() => {
     // Wait for auth initialization before checking authentication
       console.log(`[OrdersPage] useEffect fired: isInitialized=${isInitialized}, isAuthenticated=${isAuthenticated}`)
@@ -279,7 +287,7 @@ const OrdersPage: React.FC = () => {
   return (
     <div className="orders-page">
       <div className="orders-header">
-        <button className="back-btn" onClick={() => navigate('/profile')}>
+        <button className="back-btn" onClick={handleBack}>
           <ArrowLeft size={24} /> Назад
         </button>
         <h1>Замовлення</h1>

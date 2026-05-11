@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Send, MessageCircle } from 'lucide-react'
+import { Send, MessageCircle } from 'lucide-react'
 import { useAuthStore } from '../stores/authStore'
 import './ChatPage.css'
 import facade from '../services/facade'
@@ -75,6 +75,24 @@ const formatChatTime = (value: unknown): string => {
   if (isSameDay) return timePart
 
   return `${parsed.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' })} ${timePart}`
+}
+
+const getChatDisplayName = (chat: Chat, currentUserId?: string): string => {
+  const cleanName = (name?: string) => String(name || '').replace(/^(Админ|Адмін|Сапорт|Support|Admin)\s+/i, '')
+  const sellerName = cleanName(chat.seller_name)
+  const buyerName = cleanName(chat.buyer_name)
+
+  if (!currentUserId) return sellerName || buyerName || 'Користувач'
+
+  if (chat.seller_id === currentUserId) {
+    return buyerName || chat.buyer_id || 'Користувач'
+  }
+
+  if (chat.buyer_id === currentUserId) {
+    return sellerName || chat.seller_id || 'Користувач'
+  }
+
+  return sellerName || buyerName || 'Користувач'
 }
 
 const ChatPage: React.FC = () => {
@@ -294,6 +312,7 @@ const ChatPage: React.FC = () => {
               const lastMessage = chat.messages[chat.messages.length - 1]
               const isActive = selectedChat?.id === chat.id
               const unreadCount = getUnreadCount(chat)
+              const chatDisplayName = getChatDisplayName(chat, user?.id)
               return (
                 <button
                   key={chat.id}
@@ -305,7 +324,7 @@ const ChatPage: React.FC = () => {
                 >
                   <div className="chat-item-header">
                     <div className="chat-item-title">
-                      <h4>{chat.seller_name}</h4>
+                      <h4>{chatDisplayName}</h4>
                       {unreadCount > 0 && (
                         <span className="unread-badge">{unreadCount}</span>
                       )}
@@ -332,11 +351,8 @@ const ChatPage: React.FC = () => {
           {selectedChat ? (
             <>
               <div className="chat-header">
-                <button className="back-btn" onClick={() => setSelectedChat(null)}>
-                  <ArrowLeft size={24} />
-                </button>
                 <div>
-                  <h3>{selectedChat.seller_name}</h3>
+                  <h3>{getChatDisplayName(selectedChat, user?.id)}</h3>
                 </div>
               </div>
 

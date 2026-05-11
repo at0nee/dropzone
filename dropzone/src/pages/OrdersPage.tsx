@@ -33,6 +33,7 @@ const OrdersPage: React.FC = () => {
   const [rating, setRating] = useState(5)
   const [reviewComment, setReviewComment] = useState('')
   const [submittingReview, setSubmittingReview] = useState(false)
+  const REVIEW_COMMENT_MAX = 100
 
   useEffect(() => {
     // Wait for auth initialization before checking authentication
@@ -504,12 +505,13 @@ const OrdersPage: React.FC = () => {
               </div>
 
               <div className="comment-input">
-                <label>Коментар:</label>
+                <label>Коментар: <span className="char-counter">{reviewComment.length}/{REVIEW_COMMENT_MAX}</span></label>
                 <textarea
                   value={reviewComment}
-                  onChange={(e) => setReviewComment(e.target.value)}
+                  onChange={(e) => setReviewComment(e.target.value.slice(0, REVIEW_COMMENT_MAX))}
                   placeholder="Поділіться своїм враженням про цей товар та продавця..."
                   rows={4}
+                  maxLength={REVIEW_COMMENT_MAX}
                 />
               </div>
 
@@ -524,7 +526,7 @@ const OrdersPage: React.FC = () => {
                 <button
                   className="btn-submit-review"
                   onClick={handleSubmitReview}
-                  disabled={submittingReview || !reviewComment.trim()}
+                  disabled={submittingReview || !reviewComment.trim() || reviewComment.length > REVIEW_COMMENT_MAX}
                 >
                   {submittingReview ? 'Додавання...' : 'Додати відгук'}
                 </button>

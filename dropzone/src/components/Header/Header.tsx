@@ -267,12 +267,14 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                         <div className="form-group">
                           <label>Сума (₴)</label>
                           <input
-                            type="number"
+                            type="text"
+                            inputMode="decimal"
                             placeholder="Введіть суму"
                             value={topUpAmount}
-                            onChange={(e) => setTopUpAmount(e.target.value)}
-                            min="10"
-                            max="100000"
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/[^0-9.]/g, '')
+                              setTopUpAmount(val)
+                            }}
                           />
                         </div>
 

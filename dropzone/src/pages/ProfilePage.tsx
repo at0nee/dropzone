@@ -81,7 +81,8 @@ const ProfilePage: React.FC = () => {
         setMyProducts((products || []).filter((p: any) => p.seller_id === user?.id))
         setProductToDelete(null)
       })()
-    } catch (_error) {
+    } catch (error) {
+      console.error('Помилка при видаленні товару:', error)
     }
   }
 
@@ -102,6 +103,12 @@ const ProfilePage: React.FC = () => {
     e.preventDefault()
     try {
       ;(async () => {
+        const MAX_USERNAME = 18
+        if (typeof editUsername === 'string' && editUsername.length > MAX_USERNAME) {
+          showToast(`❌ Ім'я користувача має бути не довше ${MAX_USERNAME} символів`, 'error')
+          return
+        }
+
         const updated = await facade.updateUser(user.id, { username: editUsername, email: editEmail })
         if (updated) {
           useAuthStore.setState({ user: updated })
@@ -111,7 +118,8 @@ const ProfilePage: React.FC = () => {
         }
         setIsEditing(false)
       })()
-    } catch (_error) {
+    } catch (error) {
+      console.error('Помилка збереження профілю', error)
       showToast('❌ Помилка збереження', 'error')
     }
   }
@@ -162,7 +170,7 @@ const ProfilePage: React.FC = () => {
               <span>{user.email}</span>
             </div>
             <div className="info-row">
-              <label>Присоединився</label>
+              <label>Приєднався</label>
               <span>{new Date(user.created_at).toLocaleDateString('uk-UA')}</span>
             </div>
           </div>

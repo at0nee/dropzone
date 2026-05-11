@@ -8,14 +8,25 @@ const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
+  const [localError, setLocalError] = useState<string | null>(null)
+  const MAX_USERNAME = 18
+  const [usernameError, setUsernameError] = useState<string | null>(null)
   const { login, register, error, isLoading, clearError } = useAuthStore()
   const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     clearError()
+    setLocalError(null)
 
     try {
+      if (!isLogin && username.length > MAX_USERNAME) {
+        const msg = `Ім'я користувача має бути не довше ${MAX_USERNAME} символів`
+        setLocalError(msg)
+        setUsernameError(msg)
+        return
+      }
+
       const success = isLogin ? await login({ email, password }) : await register(email, password, username)
       if (success) {
         navigate('/')
@@ -37,7 +48,7 @@ const LoginPage: React.FC = () => {
           <p>{isLogin ? 'Вхід в аккаунт' : 'Реєстрація'}</p>
         </div>
 
-        {error && <div className="error-message">{error}</div>}
+        {(error || localError) && <div className="error-message">{localError || error}</div>}
 
         <form onSubmit={handleSubmit} className="auth-form">
           {!isLogin && (
@@ -46,10 +57,17 @@ const LoginPage: React.FC = () => {
               <input
                 type="text"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setUsername(v)
+                  if (v.length > MAX_USERNAME) setUsernameError(`Ім'я користувача має бути не довше ${MAX_USERNAME} символів`)
+                  else setUsernameError(null)
+                }}
+                maxLength={MAX_USERNAME}
                 required
                 disabled={isLoading}
               />
+              {usernameError && <div className="field-error">{usernameError}</div>}
             </div>
           )}
 
@@ -76,7 +94,7 @@ const LoginPage: React.FC = () => {
             />
           </div>
 
-          <button type="submit" className="auth-submit-btn" disabled={isLoading}>
+          <button type="submit" className="auth-submit-btn" disabled={isLoading || (!isLogin && !!usernameError)}>
             {isLoading ? 'Завантаження...' : isLogin ? 'Увійти' : 'Зареєструватися'}
           </button>
         </form>

@@ -64,6 +64,14 @@
   color: var(--text-primary);
 }
 
+/* Ensure long unbroken titles and description text wrap instead of overflowing */
+.product-details h1,
+.description-section p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .product-rating {
   display: flex;
   align-items: center;
@@ -466,6 +474,9 @@
   margin: 0;
   color: var(--text-primary);
   line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 @media (max-width: 768px) {

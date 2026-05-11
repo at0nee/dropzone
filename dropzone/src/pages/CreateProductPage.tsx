@@ -66,6 +66,9 @@ const CreateProductPage: React.FC = () => {
   const [isEditMode, setIsEditMode] = useState(!!productId)
   const [originalProduct, setOriginalProduct] = useState<any>(null)
   const [catalogCategories, setCatalogCategories] = useState<CatalogCategory[]>(DEFAULT_CATALOG_CATEGORIES)
+  const TITLE_MAX = 56
+  const DESCRIPTION_MAX = 512
+
   const [formData, setFormData] = useState<ProductFormData>({
     title: '',
     description: '',
@@ -156,6 +159,21 @@ const CreateProductPage: React.FC = () => {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
+
+    // Enforce limits and special formatting
+    if (name === 'title') {
+      // keep title small letters and trim to max
+      const v = value.toLowerCase().slice(0, TITLE_MAX)
+      setFormData(prev => ({ ...prev, title: v }))
+      return
+    }
+
+    if (name === 'description') {
+      const v = value.slice(0, DESCRIPTION_MAX)
+      setFormData(prev => ({ ...prev, description: v }))
+      return
+    }
+
     setFormData(prev => ({
       ...prev,
       [name]: name === 'price' || name === 'stock' ? parseFloat(value) || 0 : value
@@ -230,7 +248,7 @@ const CreateProductPage: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="description">Опис *</label>
+            <label htmlFor="description">Опис * <span className="char-counter">{formData.description.length}/{DESCRIPTION_MAX}</span></label>
             <textarea
               id="description"
               name="description"
@@ -246,13 +264,16 @@ const CreateProductPage: React.FC = () => {
             <div className="form-group">
               <label htmlFor="price">Ціна (₴) *</label>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 id="price"
                 name="price"
-                value={formData.price}
-                onChange={handleChange}
+                value={formData.price || ''}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^0-9.]/g, '')
+                  handleChange({ target: { name: 'price', value: val } } as any)
+                }}
                 placeholder="0"
-                min="1"
                 required
               />
             </div>
@@ -260,13 +281,16 @@ const CreateProductPage: React.FC = () => {
             <div className="form-group">
               <label htmlFor="stock">Кількість на складі *</label>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 id="stock"
                 name="stock"
-                value={formData.stock}
-                onChange={handleChange}
+                value={formData.stock || ''}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^0-9]/g, '')
+                  handleChange({ target: { name: 'stock', value: val } } as any)
+                }}
                 placeholder="1"
-                min="1"
                 required
               />
             </div>
@@ -326,7 +350,11 @@ const CreateProductPage: React.FC = () => {
           <button type="button" className="btn-cancel" onClick={() => navigate(-1)}>
             Скасувати
           </button>
-          <button type="submit" className="btn-submit" disabled={isLoading}>
+          <button
+            type="submit"
+            className="btn-submit"
+            disabled={isLoading || !formData.title || !formData.description || formData.title.length > TITLE_MAX || formData.description.length > DESCRIPTION_MAX}
+          >
             {isEditMode ? (
               <>
                 <Edit2 size={20} /> {isLoading ? 'Збереження...' : 'Зберегти зміни'}

@@ -48,6 +48,7 @@ export interface Review {
   id: string
   product_id: string
   seller_id: string
+  seller_name?: string
   buyer_id: string
   buyer_name: string
   rating: number

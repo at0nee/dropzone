@@ -334,19 +334,25 @@ const CatalogPage: React.FC = () => {
             <label className="filter-group-label">Ціна</label>
             <div className="price-inputs">
               <input
-                type="number"
-                min="0"
+                type="text"
+                inputMode="numeric"
                 placeholder="Від"
-                value={priceRange[0]}
-                onChange={(e) => setPriceRange([Number(e.target.value), priceRange[1]])}
+                value={priceRange[0] || ''}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^0-9]/g, '')
+                  setPriceRange([val === '' ? 0 : Number(val), priceRange[1]])
+                }}
               />
               <span className="price-separator">-</span>
               <input
-                type="number"
-                max="100000"
+                type="text"
+                inputMode="numeric"
                 placeholder="До"
-                value={priceRange[1]}
-                onChange={(e) => setPriceRange([priceRange[0], Number(e.target.value)])}
+                value={priceRange[1] || ''}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^0-9]/g, '')
+                  setPriceRange([priceRange[0], val === '' ? 100000 : Number(val)])
+                }}
               />
             </div>
           </div>

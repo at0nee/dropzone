@@ -89,6 +89,8 @@
   font-size: 1rem;
   font-family: inherit;
   transition: all 0.3s;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .form-group input:focus,
@@ -121,6 +123,21 @@
 .form-group textarea {
   resize: vertical;
   min-height: 120px;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.char-counter {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-left: 0.5rem;
+}
+
+.field-error {
+  color: #ff6b6b;
+  font-size: 0.9rem;
+  margin-top: 0.4rem;
 }
 
 .form-row {

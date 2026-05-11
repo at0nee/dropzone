@@ -480,6 +480,12 @@
   font-size: 0.95rem;
 }
 
+.char-counter {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-left: 0.5rem;
+}
+
 .comment-input textarea {
   background: rgba(0, 212, 255, 0.05);
   border: 1px solid rgba(0, 212, 255, 0.2);
@@ -490,6 +496,9 @@
   font-size: 0.95rem;
   resize: vertical;
   transition: all 0.3s;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .comment-input textarea:focus {

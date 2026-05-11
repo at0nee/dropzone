@@ -155,11 +155,14 @@ const BalanceTopUpPage: React.FC = () => {
               <label>
                 Сума поповнення (₴)
                 <input
-                  type="number"
-                  min={10}
-                  max={100000}
-                  value={amount}
-                  onChange={(e) => setAmount(Math.max(0, Number(e.target.value || 0)))}
+                  type="text"
+                  inputMode="decimal"
+                  value={amount || ''}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9.]/g, '')
+                    setAmount(val === '' ? 0 : Math.max(0, parseFloat(val)))
+                  }}
+                  placeholder="100"
                   disabled={isProcessing}
                 />
               </label>

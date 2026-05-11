@@ -69,3 +69,12 @@ body {
   background-color: var(--accent-primary);
   color: var(--bg-primary);
 }
+
+/* Remove spinner from numeric inputs */
+input[type="text"][inputMode="decimal"]::-webkit-outer-spin-button,
+input[type="text"][inputMode="decimal"]::-webkit-inner-spin-button,
+input[type="text"][inputMode="numeric"]::-webkit-outer-spin-button,
+input[type="text"][inputMode="numeric"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

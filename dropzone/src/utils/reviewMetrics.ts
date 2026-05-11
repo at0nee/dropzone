@@ -1,5 +1,6 @@
 export interface ReviewLike {
   seller_id?: string
+  seller_name?: string
   rating?: number
 }
 

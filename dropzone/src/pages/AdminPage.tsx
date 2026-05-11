@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, CheckCircle2, MessageCircle, Shield, Users, AlertTriangle, RefreshCw, Search, BadgeInfo } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, MessageCircle, Shield, Users, AlertTriangle, RefreshCw, Search, BadgeInfo, Trash2, Coins } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { User, UserRole, CatalogCategory } from '../types'
@@ -69,6 +69,7 @@ const AdminPage: React.FC = () => {
   const [users, setUsers] = useState<User[]>([])
   const [orders, setOrders] = useState<any[]>([])
   const [chats, setChats] = useState<any[]>([])
+  const [chatCount, setChatCount] = useState(0)
   const [products, setProducts] = useState<any[]>([])
   const [catalogCategories, setCatalogCategories] = useState<CatalogCategory[]>([])
   const [selectedDisputeId, setSelectedDisputeId] = useState('')
@@ -88,6 +89,7 @@ const AdminPage: React.FC = () => {
   const [categoryParentId, setCategoryParentId] = useState('')
   const [categorySortOrder, setCategorySortOrder] = useState(0)
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{ userId: string; username: string } | null>(null)
   const backendBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
   // Backend is enabled if explicitly set OR if we have localStorage auth (means backend worked before)
   const backendEnabled = Boolean(backendBaseUrl) || Boolean(localStorage.getItem('auth_token'))
@@ -104,6 +106,7 @@ const AdminPage: React.FC = () => {
       setUsers(storedUsers)
       setOrders(storedOrders)
       setChats(storedChats)
+      setChatCount(storedChats.length)
       setProducts(storedProducts)
       setDebugLogs(storedLogs)
 
@@ -124,6 +127,7 @@ const AdminPage: React.FC = () => {
         setUsers(getStoredUsers())
         setOrders(nextDisputes)
         setChats([])
+        setChatCount(0)
         setProducts(getStoredProducts())
         setCatalogCategories(getStoredCatalogCategories())
         setDebugLogs(storedLogs)
@@ -136,7 +140,7 @@ const AdminPage: React.FC = () => {
       const [usersRes, ordersRes, chatsRes, productsRes, catalogRes, disputesRes] = await Promise.all([
         api.get('/users'),
         api.get('/orders'),
-        api.get('/chat/threads'),
+        isAdmin ? api.get('/admin/chat-count') : api.get('/chat/threads'),
         api.get('/products', { params: { pageSize: 100 } }),
         catalogService.getAdminCategories(),
         api.get('/admin/disputes').catch(() => ({ data: { data: [] } })), // Disputes endpoint might not exist
@@ -144,7 +148,9 @@ const AdminPage: React.FC = () => {
 
       const nextUsers = usersRes.data?.data ?? []
       const nextOrders = ordersRes.data?.data ?? []
-      const nextChats = chatsRes.data?.data ?? []
+      // For admin, chatsRes contains { count: number }, for regular users it's array of threads
+      const nextChats = isAdmin ? [] : (chatsRes.data?.data ?? [])
+      const nextChatCount = isAdmin ? (chatsRes.data?.data?.count ?? 0) : nextChats.length
       const nextDisputes = disputesRes.data?.data ?? []
       
       // If we got disputes with chat data, merge them with orders
@@ -162,6 +168,7 @@ const AdminPage: React.FC = () => {
 
       setUsers(nextUsers)
       setChats(nextChats)
+      setChatCount(nextChatCount)
       setProducts(nextProducts)
       setCatalogCategories(nextCatalog)
       saveStoredCatalogCategories(nextCatalog)
@@ -180,6 +187,7 @@ const AdminPage: React.FC = () => {
       setUsers(storedUsers)
       setOrders(storedOrders)
       setChats(storedChats)
+      setChatCount(storedChats.length)
       setProducts(storedProducts)
       setCatalogCategories(storedCatalog)
       if (storedCatalog.length === 0) {
@@ -403,9 +411,9 @@ const AdminPage: React.FC = () => {
       disputes: disputedOrders.length,
       completedOrders: orders.filter((order) => order.status === 'completed').length,
       revenue: completedRevenue,
-      chats: chats.length,
+      chats: chatCount,
     }
-  }, [chats.length, disputedOrders.length, orders, users])
+  }, [chatCount, disputedOrders.length, orders, users])
 
   const handleRoleChange = (targetUserId: string, nextRole: UserRole) => {
     if (!isAdmin) return
@@ -465,6 +473,40 @@ const AdminPage: React.FC = () => {
         return next
       })
       showToast('✅ Баланс оновлено', 'success')
+    })()
+  }
+
+  const handleDeleteUser = (targetUserId: string) => {
+    if (!isAdmin) return
+
+    if (targetUserId === user?.id) {
+      showToast('ℹ️ Не можна видалити себе', 'info')
+      return
+    }
+
+    const targetUser = users.find((u) => u.id === targetUserId)
+    setDeleteConfirmModal({ userId: targetUserId, username: targetUser?.username || 'Unknown User' })
+  }
+
+  const handleConfirmDelete = () => {
+    if (!deleteConfirmModal) return
+
+    const targetUserId = deleteConfirmModal.userId
+
+    void (async () => {
+      try {
+        await api.delete(`/users/${targetUserId}`)
+        setUsers((current) => current.filter((u) => u.id !== targetUserId))
+        showToast(`✅ Користувача видалено`, 'success')
+        setDeleteConfirmModal(null)
+        return
+      } catch (error) {
+        console.error('Failed to delete user via backend, using local fallback:', error)
+      }
+
+      setUsers((current) => current.filter((u) => u.id !== targetUserId))
+      showToast(`✅ Користувача видалено`, 'success')
+      setDeleteConfirmModal(null)
     })()
   }
 
@@ -851,12 +893,17 @@ const AdminPage: React.FC = () => {
                       {editingBalance[candidate.id] !== undefined ? (
                         <div className="balance-input-group">
                           <input
-                            type="number"
+                            type="text"
+                            inputMode="decimal"
                             value={editingBalance[candidate.id]}
-                            onChange={(e) => setEditingBalance({ ...editingBalance, [candidate.id]: Number(e.target.value) })}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/[^0-9.]/g, '')
+                              if (val === '' || !isNaN(parseFloat(val))) {
+                                setEditingBalance({ ...editingBalance, [candidate.id]: val === '' ? 0 : parseFloat(val) })
+                              }
+                            }}
                             className="balance-input"
-                            min="0"
-                            step="0.01"
+                            placeholder="0"
                           />
                           <button
                             className="balance-save-btn"
@@ -881,12 +928,21 @@ const AdminPage: React.FC = () => {
                             onClick={() => setEditingBalance({ ...editingBalance, [candidate.id]: Number(candidate.balance || 0) })}
                             title="Редагувати баланс"
                           >
-                            ✎
+                            <Coins size={18} />
                           </button>
                         </div>
                       )}
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem' }} />
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        className="btn-delete-user"
+                        onClick={() => handleDeleteUser(candidate.id)}
+                        disabled={candidate.id === user?.id}
+                        title={candidate.id === user?.id ? 'Не можна видалити себе' : 'Видалити користувача'}
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
@@ -1032,10 +1088,14 @@ const AdminPage: React.FC = () => {
                 <label>
                   Порядок сортування
                   <input
-                    type="number"
-                    min="0"
-                    value={categorySortOrder}
-                    onChange={(e) => setCategorySortOrder(Number(e.target.value))}
+                    type="text"
+                    inputMode="numeric"
+                    value={categorySortOrder || ''}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9]/g, '')
+                      setCategorySortOrder(val === '' ? 0 : Number(val))
+                    }}
+                    placeholder="0"
                   />
                 </label>
 
@@ -1226,6 +1286,38 @@ const AdminPage: React.FC = () => {
               </button>
               <button className="modal-btn-confirm" onClick={() => handleDeleteProduct(productToDelete)}>
                 Видалити
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete User Confirmation Modal */}
+      {deleteConfirmModal && (
+        <div className="modal-overlay" onClick={() => setDeleteConfirmModal(null)}>
+          <div className="modal-content delete-user-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>🗑️ Видалити користувача?</h2>
+            <p className="modal-username">
+              <strong>{deleteConfirmModal.username}</strong>
+            </p>
+            <p className="modal-warning">
+              ⚠️ Будуть видалені:
+            </p>
+            <ul className="modal-list">
+              <li>Усі його товари</li>
+              <li>Усі його замовлення</li>
+              <li>Усі його чати</li>
+              <li>Усі його відгуки</li>
+              <li>Інші дані користувача</li>
+            </ul>
+            <p className="modal-danger">
+              Ця дія <strong>незворотна</strong>!
+            </p>
+            <div className="modal-actions">
+              <button className="modal-btn-cancel" onClick={() => setDeleteConfirmModal(null)}>
+                Скасувати
+              </button>
+              <button className="modal-btn-confirm danger" onClick={handleConfirmDelete}>
+                Видалити користувача
               </button>
             </div>
           </div>

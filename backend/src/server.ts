@@ -49,6 +49,12 @@ const asyncHandler = (fn: (req: Request, res: Response) => Promise<void>) => {
   }
 }
 
+// Validation limits
+const MAX_USERNAME_LENGTH = 18
+const PRODUCT_TITLE_MAX = 56
+const PRODUCT_DESCRIPTION_MAX = 512
+const REVIEW_COMMENT_MAX = 100
+
 const send = (res: Response, data: unknown, status = 200) => {
   res.status(status).json({ success: true, data })
 }
@@ -319,6 +325,10 @@ app.post('/auth/register', asyncHandler(async (req, res) => {
     return fail(res, 400, 'Validation error', ['email, password, username are required'])
   }
 
+  if (username.length > MAX_USERNAME_LENGTH) {
+    return fail(res, 400, 'Validation error', [`username must be at most ${MAX_USERNAME_LENGTH} characters`])
+  }
+
   if (db.users.some((user) => user.email.toLowerCase() === email.toLowerCase())) {
     return fail(res, 409, 'User already exists')
   }
@@ -536,6 +546,9 @@ app.post('/products', asyncHandler(async (req, res) => {
     return fail(res, 400, 'Validation error', ['title, description, price are required'])
   }
 
+  if (title.length > PRODUCT_TITLE_MAX) return fail(res, 400, 'Validation error', [`title must be at most ${PRODUCT_TITLE_MAX} characters`])
+  if (description.length > PRODUCT_DESCRIPTION_MAX) return fail(res, 400, 'Validation error', [`description must be at most ${PRODUCT_DESCRIPTION_MAX} characters`])
+
   const product: Product = {
     id: generateId('prod'),
     title,
@@ -571,8 +584,13 @@ app.put('/products/:id', asyncHandler(async (req, res) => {
   }
 
   const payload = req.body || {}
-  product.title = normalizeText(payload.title ?? product.title)
-  product.description = normalizeText(payload.description ?? product.description)
+  const newTitle = typeof payload.title === 'string' ? normalizeText(payload.title) : product.title
+  const newDescription = typeof payload.description === 'string' ? normalizeText(payload.description) : product.description
+  if (typeof payload.title === 'string' && newTitle.length > PRODUCT_TITLE_MAX) return fail(res, 400, 'Validation error', [`title must be at most ${PRODUCT_TITLE_MAX} characters`])
+  if (typeof payload.description === 'string' && newDescription.length > PRODUCT_DESCRIPTION_MAX) return fail(res, 400, 'Validation error', [`description must be at most ${PRODUCT_DESCRIPTION_MAX} characters`])
+
+  product.title = newTitle
+  product.description = newDescription
   product.price = asNumber(payload.price ?? product.price)
   product.stock = asNumber(payload.stock ?? payload.quantity ?? product.stock)
   product.category = normalizeText(payload.category ?? product.category)
@@ -638,13 +656,20 @@ app.post('/reviews', asyncHandler(async (req, res) => {
   const rating = Math.max(1, Math.min(5, asNumber(req.body?.rating, 5)))
   const text = normalizeText(req.body?.text || req.body?.comment)
   const orderId = normalizeText(req.body?.order_id)
+  
+  if (text.length > REVIEW_COMMENT_MAX) return fail(res, 400, 'Validation error', [`review comment must be at most ${REVIEW_COMMENT_MAX} characters`])
+  
   const product = db.products.find((item) => item.id === productId)
   if (!product) return fail(res, 404, 'Product not found')
+
+  const seller = db.users.find((u) => u.id === product.seller_id)
+  const sellerName = seller?.username || product.seller_id
 
   const review: Review = {
     id: generateId('rev'),
     product_id: product.id,
     seller_id: product.seller_id,
+    seller_name: sellerName,
     buyer_id: user.id,
     buyer_name: user.username,
     rating,
@@ -689,7 +714,10 @@ app.put('/users/:id', asyncHandler(async (req, res) => {
   if (current.role !== 'admin' && current.id !== target.id) return fail(res, 403, 'Forbidden')
 
   const payload = req.body || {}
-  if (typeof payload.username === 'string') target.username = payload.username
+  if (typeof payload.username === 'string') {
+    if (payload.username.length > MAX_USERNAME_LENGTH) return fail(res, 400, 'Validation error', [`username must be at most ${MAX_USERNAME_LENGTH} characters`])
+    target.username = payload.username
+  }
   if (typeof payload.name === 'string') target.name = payload.name
   if (typeof payload.avatar === 'string') target.avatar = payload.avatar
   if (typeof payload.email === 'string') target.email = payload.email
@@ -699,6 +727,49 @@ app.put('/users/:id', asyncHandler(async (req, res) => {
 
   await saveDb(db)
   send(res, publicUser(target))
+}))
+
+app.delete('/users/:id', asyncHandler(async (req, res) => {
+  const db = await ensureDb()
+  const current = requireAuth(db, req, res)
+  if (!current) return
+
+  // Only admins can delete users
+  if (current.role !== 'admin') return fail(res, 403, 'Forbidden')
+
+  const targetUserId = req.params.id
+  const target = db.users.find((item) => item.id === targetUserId)
+  if (!target) return fail(res, 404, 'User not found')
+
+  // Prevent self-deletion
+  if (current.id === targetUserId) return fail(res, 400, 'Cannot delete yourself')
+
+  // Delete user's products
+  const productsToDelete = db.products.filter((p) => p.seller_id === targetUserId)
+  const deletedProductIds = new Set(productsToDelete.map((p) => p.id))
+  db.products = db.products.filter((p) => p.seller_id !== targetUserId)
+
+  // Delete user's orders (as buyer or seller)
+  db.orders = db.orders.filter((o) => o.buyer_id !== targetUserId && o.seller_id !== targetUserId)
+
+  // Delete user's chats
+  db.chats = db.chats.filter((c) => c.buyer_id !== targetUserId && c.seller_id !== targetUserId)
+
+  // Delete user's reviews (written by them or about their products)
+  db.reviews = db.reviews.filter((r) => r.buyer_id !== targetUserId && r.seller_id !== targetUserId)
+
+  // Remove user from carts of other users
+  Object.keys(db.carts).forEach((userId) => {
+    if (db.carts[userId]) {
+      db.carts[userId] = db.carts[userId].filter((item) => !deletedProductIds.has(item.product_id))
+    }
+  })
+
+  // Delete the user
+  db.users = db.users.filter((u) => u.id !== targetUserId)
+
+  await saveDb(db)
+  send(res, { success: true, message: `User ${targetUserId} and all related data deleted` })
 }))
 
 app.get('/cart', asyncHandler(async (req, res) => {
@@ -1081,6 +1152,19 @@ app.post('/admin/disputes/:id/resolve', asyncHandler(async (req, res) => {
 
   await saveDb(db)
   send(res, { users: db.users.map(publicUser), orders: db.orders, chats: db.chats, order })
+}))
+
+app.get('/admin/chat-count', asyncHandler(async (req, res) => {
+  const db = await ensureDb()
+  const user = requireAuth(db, req, res)
+  if (!user) return
+
+  // Only admin/support can see total chat count
+  if (user.role !== 'admin' && user.role !== 'support') {
+    return fail(res, 403, 'Forbidden', ['Only admin/support can view total chat count'])
+  }
+
+  send(res, { count: db.chats.length })
 }))
 
 app.get('/chat/threads', asyncHandler(async (req, res) => {

@@ -66,6 +66,7 @@ const HomePage: React.FC = () => {
     const sellerMeta = new Map<string, { username: string; rating: number; reviewsCount: number }>()
     const salesCountBySeller = new Map<string, number>()
 
+    // 1. Add sellers from active products
     allProducts.forEach((product) => {
       const current = sellerMeta.get(product.seller_id)
       const nextMeta = {
@@ -79,24 +80,48 @@ const HomePage: React.FC = () => {
       }
     })
 
+    // 2. Add all sellers with sales (even if they have no active products)
     Object.entries(salesCountBySellerSummary).forEach(([sellerId, sales]) => {
       salesCountBySeller.set(sellerId, Number(sales) || 0)
+      // If seller has sales but no active products, add them to sellerMeta
+      if (!sellerMeta.has(sellerId)) {
+        sellerMeta.set(sellerId, {
+          username: sellerId, // Will be updated below if in reviews
+          rating: 0,
+          reviewsCount: 0,
+        })
+      }
     })
 
-    const sellers: SellerLeaderboardItem[] = Array.from(sellerMeta.entries()).map(([sellerId, meta]) => ({
-      ...(() => {
-        const metrics = getReviewMetricsForSeller(sellerId, reviews, meta.rating, meta.reviewsCount)
-        return {
-          rating: metrics.rating,
-          reviewsCount: metrics.reviewsCount,
-        }
-      })(),
-      sellerId,
-      username: meta.username,
-      salesCount: salesCountBySeller.get(sellerId) || 0,
-    }))
+    // 3. Add all sellers with reviews (even if they have no active products)
+    reviews.forEach((review) => {
+      if (!sellerMeta.has(review.seller_id)) {
+        sellerMeta.set(review.seller_id, {
+          username: review.seller_name || review.seller_id, // Use seller_name from review if available
+          rating: 0,
+          reviewsCount: 0,
+        })
+      }
+    })
+
+    const sellers: SellerLeaderboardItem[] = Array.from(sellerMeta.entries()).map(([sellerId, meta]) => {
+      // Get accurate metrics from reviews
+      const sellerReviews = reviews.filter((r) => r.seller_id === sellerId)
+      const avgRating = sellerReviews.length > 0 
+        ? Math.round((sellerReviews.reduce((sum, r) => sum + r.rating, 0) / sellerReviews.length) * 10) / 10
+        : 0
+
+      return {
+        rating: avgRating,
+        reviewsCount: sellerReviews.length,
+        sellerId,
+        username: meta.username || sellerId,
+        salesCount: salesCountBySeller.get(sellerId) || 0,
+      }
+    })
 
     const bySales = [...sellers]
+      .filter((s) => s.salesCount > 0 || s.reviewsCount > 0) // Only sellers with sales or reviews
       .sort((a, b) => {
         if (b.salesCount !== a.salesCount) return b.salesCount - a.salesCount
         if (b.rating !== a.rating) return b.rating - a.rating
@@ -105,6 +130,7 @@ const HomePage: React.FC = () => {
       .slice(0, 5)
 
     const byReviews = [...sellers]
+      .filter((s) => s.reviewsCount > 0) // Only sellers with reviews
       .sort((a, b) => {
         if (b.reviewsCount !== a.reviewsCount) return b.reviewsCount - a.reviewsCount
         if (b.rating !== a.rating) return b.rating - a.rating

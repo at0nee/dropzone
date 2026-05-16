@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS products (
 
 CREATE TABLE IF NOT EXISTS orders (
   id VARCHAR(64) PRIMARY KEY,
-  product_id VARCHAR(64) NOT NULL,
+  product_id VARCHAR(64) NULL,
   product_name VARCHAR(255) NOT NULL,
   seller_id VARCHAR(64) NOT NULL,
   seller_name VARCHAR(255) NOT NULL,
@@ -46,14 +46,14 @@ CREATE TABLE IF NOT EXISTS orders (
   dispute_resolution ENUM('refund','seller') NULL,
   dispute_resolved_by VARCHAR(255) NULL,
   dispute_resolved_at DATETIME NULL,
-  CONSTRAINT fk_orders_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  CONSTRAINT fk_orders_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
   CONSTRAINT fk_orders_seller FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_orders_buyer FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS reviews (
   id VARCHAR(64) PRIMARY KEY,
-  product_id VARCHAR(64) NOT NULL,
+  product_id VARCHAR(64) NULL,
   seller_id VARCHAR(64) NOT NULL,
   buyer_id VARCHAR(64) NOT NULL,
   buyer_name VARCHAR(255) NOT NULL,
@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS reviews (
   order_id VARCHAR(64) NULL,
   product_title VARCHAR(255) NULL,
   created_at DATETIME NOT NULL,
-  CONSTRAINT fk_reviews_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  CONSTRAINT fk_reviews_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
   CONSTRAINT fk_reviews_seller FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_reviews_buyer FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_reviews_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL

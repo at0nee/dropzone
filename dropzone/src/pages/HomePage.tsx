@@ -23,6 +23,7 @@ const HomePage: React.FC = () => {
   const [popularFromServer, setPopularFromServer] = useState<Product[]>([])
   const [completedPurchasesCount, setCompletedPurchasesCount] = useState(0)
   const [salesCountBySellerSummary, setSalesCountBySellerSummary] = useState<Record<string, number>>({})
+  const [sellerNamesById, setSellerNamesById] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -36,6 +37,7 @@ const HomePage: React.FC = () => {
         setAllProducts(((Array.isArray(products) ? products : products?.data) || []).filter((product: any) => Number(product.stock || 0) > 0))
         setCompletedPurchasesCount(summary.completedPurchasesCount || 0)
         setSalesCountBySellerSummary(summary.salesCountBySeller || {})
+        setSellerNamesById(summary.sellerNamesById || {})
         setPopularFromServer((summary.popularProducts || []) as Product[])
       } catch (error) {
         console.error('Failed to fetch products:', error)
@@ -44,6 +46,7 @@ const HomePage: React.FC = () => {
         setPopularFromServer([])
         setCompletedPurchasesCount(0)
         setSalesCountBySellerSummary({})
+        setSellerNamesById({})
       } finally {
         setLoading(false)
       }
@@ -65,12 +68,13 @@ const HomePage: React.FC = () => {
   const sellerLeaderboards = useMemo(() => {
     const sellerMeta = new Map<string, { username: string; rating: number; reviewsCount: number }>()
     const salesCountBySeller = new Map<string, number>()
+    const resolveSellerName = (sellerId: string, fallbackName?: string) => sellerNamesById[sellerId] || fallbackName || sellerId
 
     // 1. Add sellers from active products
     allProducts.forEach((product) => {
       const current = sellerMeta.get(product.seller_id)
       const nextMeta = {
-        username: product.seller?.username || product.seller_id,
+        username: resolveSellerName(product.seller_id, product.seller?.username),
         rating: Number(product.seller?.rating || 0),
         reviewsCount: Number(product.seller?.reviews_count || 0),
       }
@@ -86,7 +90,7 @@ const HomePage: React.FC = () => {
       // If seller has sales but no active products, add them to sellerMeta
       if (!sellerMeta.has(sellerId)) {
         sellerMeta.set(sellerId, {
-          username: sellerId, // Will be updated below if in reviews
+          username: resolveSellerName(sellerId),
           rating: 0,
           reviewsCount: 0,
         })
@@ -95,12 +99,18 @@ const HomePage: React.FC = () => {
 
     // 3. Add all sellers with reviews (even if they have no active products)
     reviews.forEach((review) => {
-      if (!sellerMeta.has(review.seller_id)) {
+      const current = sellerMeta.get(review.seller_id)
+      if (!current) {
         sellerMeta.set(review.seller_id, {
-          username: review.seller_name || review.seller_id, // Use seller_name from review if available
+          username: resolveSellerName(review.seller_id, review.seller_name),
           rating: 0,
           reviewsCount: 0,
         })
+      } else if (current.username === review.seller_id) {
+        const resolvedUsername = resolveSellerName(review.seller_id, review.seller_name)
+        if (resolvedUsername) {
+          current.username = resolvedUsername
+        }
       }
     })
 
@@ -139,7 +149,7 @@ const HomePage: React.FC = () => {
       .slice(0, 5)
 
     return { bySales, byReviews }
-  }, [allProducts, salesCountBySellerSummary, reviews])
+  }, [allProducts, salesCountBySellerSummary, reviews, sellerNamesById])
 
   const homepageStats = useMemo(() => {
     const uniqueSellers = new Set(allProducts.map((product) => product.seller_id)).size

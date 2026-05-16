@@ -46,7 +46,7 @@ export interface CatalogCategory {
 
 export interface Review {
   id: string
-  product_id: string
+  product_id: string | null
   seller_id: string
   seller_name?: string
   buyer_id: string
@@ -61,7 +61,7 @@ export interface Review {
 
 export interface Order {
   id: string
-  product_id: string
+  product_id: string | null
   product_name: string
   seller_id: string
   seller_name: string

@@ -115,10 +115,21 @@ const getGlobalHomeSummary = (db: Database) => {
 
   const salesCountByProduct = new Map<string, number>()
   const salesCountBySeller = new Map<string, number>()
+  const sellerNamesById: Record<string, string> = {}
 
   completedOrders.forEach((order) => {
-    salesCountByProduct.set(order.product_id, (salesCountByProduct.get(order.product_id) || 0) + 1)
+    // Only count sales for orders with valid product references
+    if (order.product_id) {
+      salesCountByProduct.set(order.product_id, (salesCountByProduct.get(order.product_id) || 0) + 1)
+    }
     salesCountBySeller.set(order.seller_id, (salesCountBySeller.get(order.seller_id) || 0) + 1)
+  })
+
+  salesCountBySeller.forEach((_, sellerId) => {
+    const seller = db.users.find((user) => user.id === sellerId)
+    if (seller?.username) {
+      sellerNamesById[sellerId] = seller.username
+    }
   })
 
   const visibleProducts = (db.products || []).filter((product) => Number(product.stock || 0) > 0)
@@ -146,6 +157,7 @@ const getGlobalHomeSummary = (db: Database) => {
     popularProducts: popularProducts.length > 0 ? popularProducts : fallbackPopularProducts,
     salesCountByProduct: Object.fromEntries(salesCountByProduct),
     salesCountBySeller: Object.fromEntries(salesCountBySeller),
+    sellerNamesById,
   }
 }
 
@@ -284,8 +296,9 @@ const getOrCreateChatThread = (db: Database, sellerId: string, buyerId: string, 
   return thread
 }
 
-const attachSystemMessage = (thread: NonNullable<ReturnType<typeof getOrCreateChatThread>>, text: string) => {
-  const message: ChatMessage = {
+type SystemMessageType = 'info' | 'alert'
+const attachSystemMessage = (thread: NonNullable<ReturnType<typeof getOrCreateChatThread>>, text: string, type: SystemMessageType = 'info') => {
+  const message: ChatMessage & { system_type?: SystemMessageType } = {
     id: generateId('msg'),
     sender_id: 'system',
     sender_name: 'System',
@@ -293,6 +306,7 @@ const attachSystemMessage = (thread: NonNullable<ReturnType<typeof getOrCreateCh
     text,
     timestamp: new Date().toISOString(),
     isSystemMessage: true,
+    system_type: type,
   }
   thread.messages.push(message)
   thread.updated_at = message.timestamp
@@ -331,6 +345,12 @@ app.post('/auth/register', asyncHandler(async (req, res) => {
 
   if (db.users.some((user) => user.email.toLowerCase() === email.toLowerCase())) {
     return fail(res, 409, 'User already exists')
+  }
+
+  // Strict email validation: require local@domain.tld (must contain a dot in domain)
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  if (!emailPattern.test(email)) {
+    return fail(res, 400, 'Validation error', ['email must be a valid address like name@domain.tld'])
   }
 
   // Generate a simple numeric user id (incrementing) for readability
@@ -617,9 +637,20 @@ app.delete('/products/:id', asyncHandler(async (req, res) => {
     return fail(res, 403, 'Forbidden')
   }
 
-  // Remove dependent rows before deleting the product so saveDb() does not hit FK failures.
-  db.orders = db.orders.filter((order) => order.product_id !== target.id)
-  db.reviews = db.reviews.filter((review) => review.product_id !== target.id)
+  // Preserve historical orders and reviews, but unlink them from the deleted product
+  // so seller stats and history remain intact even if the product is removed.
+  db.orders = db.orders.map((order) =>
+    order.product_id === target.id
+      ? { ...order, product_id: null, product_name: target.title }
+      : order
+  )
+
+  db.reviews = db.reviews.map((review) =>
+    review.product_id === target.id
+      ? { ...review, product_id: null, product_title: target.title }
+      : review
+  )
+
   db.chats = db.chats.map((chat) =>
     chat.product_id === target.id
       ? { ...chat, product_id: undefined, product_name: undefined, updated_at: new Date().toISOString() }
@@ -631,6 +662,14 @@ app.delete('/products/:id', asyncHandler(async (req, res) => {
   })
 
   db.products.splice(index, 1)
+
+  // Recalculate seller stats (reviews_count, rating) after unlinking reviews
+  try {
+    calculateSellerStats(db, target.seller_id)
+  } catch (err) {
+    console.warn('Failed to recalculate seller stats after product deletion', err)
+  }
+
   await saveDb(db)
   send(res, { deleted: true })
 }))
@@ -682,6 +721,14 @@ app.post('/reviews', asyncHandler(async (req, res) => {
 
   db.reviews.unshift(review)
   calculateSellerStats(db, product.seller_id)
+  // Add system message to chat thread notifying about new review
+  try {
+    const thread = getOrCreateChatThread(db, product.seller_id, user.id, product)
+    attachSystemMessage(thread, `✍️ ${user.username} залишив(ла) відгук про "${product.title}": ${text ? '"' + text + '"' : ''}`, 'info')
+    console.log(`📝 Review message added to chat thread ${thread.id}`)
+  } catch (err) {
+    console.log('Could not attach review system message to chat:', err)
+  }
   await saveDb(db)
   send(res, review, 201)
 }))
@@ -981,6 +1028,13 @@ app.put('/orders/:id/status', asyncHandler(async (req, res) => {
       seller.balance += order.price
       console.log(`💰 Order completed: escrow released to seller=${order.seller_id} balance=${seller.balance}`)
     }
+    // Add system message about order confirmation
+    const product = db.products.find((p) => p.id === order.product_id)
+    if (product) {
+      const thread = getOrCreateChatThread(db, order.seller_id, order.buyer_id, product)
+      attachSystemMessage(thread, `✅ ${user.username} підтвердив(ла) доставку/замовлення "${order.product_name}".`, 'info')
+      console.log(`ℹ️ Order completion message added to chat thread ${thread.id}`)
+    }
   } else if (status === 'disputed') {
     // Dispute opened by user - money stays held (escrow)
     // Only support/admin can resolve dispute and release/refund money
@@ -989,7 +1043,7 @@ app.put('/orders/:id/status', asyncHandler(async (req, res) => {
     const product = db.products.find((p) => p.id === order.product_id)
     if (product) {
       const thread = getOrCreateChatThread(db, order.seller_id, order.buyer_id, product)
-      attachSystemMessage(thread, `🚨 СПІР ВІДКРИТО: ${user.username} відкрив спір щодо замовлення "${order.product_name}". На розгляді...`)
+      attachSystemMessage(thread, `🚨 СПІР ВІДКРИТО: ${user.username} відкрив спір щодо замовлення "${order.product_name}". На розгляді...`, 'alert')
       console.log(`⚠️ Dispute message added to chat thread ${thread.id}`)
     }
   }
@@ -1148,7 +1202,7 @@ app.post('/admin/disputes/:id/resolve', asyncHandler(async (req, res) => {
   order.dispute_resolved_at = now
 
   const thread = getOrCreateChatThread(db, order.seller_id, order.buyer_id)
-  attachSystemMessage(thread, `⚖️ Спір по замовленню ${order.id} вирішено: ${resolution === 'refund' ? 'кошти повернено покупцю' : 'кошти передано продавцю'}.`)
+  attachSystemMessage(thread, `⚖️ Спір по замовленню ${order.id} вирішено: ${resolution === 'refund' ? 'кошти повернено покупцю' : 'кошти передано продавцю'}.`, 'alert')
 
   await saveDb(db)
   send(res, { users: db.users.map(publicUser), orders: db.orders, chats: db.chats, order })

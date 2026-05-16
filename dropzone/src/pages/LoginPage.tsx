@@ -9,6 +9,7 @@ const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
   const [localError, setLocalError] = useState<string | null>(null)
+  const [emailError, setEmailError] = useState<string | null>(null)
   const MAX_USERNAME = 18
   const [usernameError, setUsernameError] = useState<string | null>(null)
   const { login, register, error, isLoading, clearError } = useAuthStore()
@@ -25,6 +26,16 @@ const LoginPage: React.FC = () => {
         setLocalError(msg)
         setUsernameError(msg)
         return
+      }
+
+      if (!isLogin) {
+        const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!emailPattern.test(email)) {
+          const msg = 'Введіть коректну електронну адресу (наприклад name@domain.tld)'
+          setLocalError(msg)
+          setEmailError(msg)
+          return
+        }
       }
 
       const success = isLogin ? await login({ email, password }) : await register(email, password, username)
@@ -80,6 +91,7 @@ const LoginPage: React.FC = () => {
               required
               disabled={isLoading}
             />
+            {emailError && <div className="field-error">{emailError}</div>}
           </div>
 
           <div className="form-group">
@@ -94,7 +106,7 @@ const LoginPage: React.FC = () => {
             />
           </div>
 
-          <button type="submit" className="auth-submit-btn" disabled={isLoading || (!isLogin && !!usernameError)}>
+          <button type="submit" className="auth-submit-btn" disabled={isLoading || (!isLogin && (!!usernameError || !!emailError))}>
             {isLoading ? 'Завантаження...' : isLogin ? 'Увійти' : 'Зареєструватися'}
           </button>
         </form>

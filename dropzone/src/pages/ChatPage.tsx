@@ -13,6 +13,7 @@ interface Message {
   timestamp: string
   sender_role?: 'user' | 'support' | 'admin' | 'system'
   isSystemMessage?: boolean
+  system_type?: 'info' | 'alert'
 }
 
 interface Chat {
@@ -365,13 +366,18 @@ const ChatPage: React.FC = () => {
                   stickToBottomRef.current = messagesArea.scrollHeight - messagesArea.scrollTop - messagesArea.clientHeight < 120
                 }}
               >
-                {selectedChat.messages.map((msg) => (
+                {selectedChat.messages.map((msg) => {
+                  const text = String(msg.text || '')
+                  const explicitType = (msg as any).system_type
+                  const isAlert = msg.isSystemMessage && (explicitType === 'alert' || /спір|СПІР|🚨/.test(text))
+                  const systemClass = msg.isSystemMessage ? (isAlert ? 'system-alert' : 'system-info') : ''
+                  return (
                   <div
                     key={msg.id}
-                    className={`message ${msg.sender_id === user?.id ? 'sent' : 'received'} ${msg.isSystemMessage ? 'system-message' : ''} ${msg.sender_role === 'support' || msg.sender_role === 'admin' ? 'staff-message' : ''}`}
+                    className={`message ${msg.sender_id === user?.id ? 'sent' : 'received'} ${msg.isSystemMessage ? 'system-message' : ''} ${systemClass} ${msg.sender_role === 'support' || msg.sender_role === 'admin' ? 'staff-message' : ''}`}
                   >
                     {msg.isSystemMessage && (
-                      <div className="system-badge">
+                      <div className={`system-badge ${isAlert ? 'alert' : 'info'}`}>
                         <span>🔒 СИСТЕМНЕ</span>
                       </div>
                     )}
@@ -387,7 +393,8 @@ const ChatPage: React.FC = () => {
                       </small>
                     </div>
                   </div>
-                ))}
+                  )
+                })}
                 <div ref={messagesEndRef} />
               </div>
 

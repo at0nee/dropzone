@@ -221,10 +221,10 @@ export const appendChatMessageToSellerThread = (
       seller_id: sellerId,
       seller_name: sellerId,
       created_at: now,
-      messages: [newMessage],
+      messages: [ { ...newMessage, system_type: newMessage.isSystemMessage ? 'info' : undefined } ],
     })
   } else {
-    chats[chatIndex].messages = [...(chats[chatIndex].messages || []), newMessage]
+    chats[chatIndex].messages = [...(chats[chatIndex].messages || []), { ...newMessage, system_type: newMessage.isSystemMessage ? 'info' : undefined }]
   }
 
   saveStoredChats(chats)
@@ -288,7 +288,7 @@ export const resolveDispute = (
   orders[orderIndex] = currentOrder
 
   const chatIndex = chats.findIndex((chat) => chat.seller_id === currentOrder.seller_id)
-  if (chatIndex !== -1) {
+    if (chatIndex !== -1) {
     chats[chatIndex].messages = [...(chats[chatIndex].messages || []), {
       id: 'msg-' + Date.now(),
       sender_id: 'system',
@@ -296,6 +296,7 @@ export const resolveDispute = (
       text: systemText,
       timestamp: now,
       isSystemMessage: true,
+      system_type: 'alert',
     }]
   }
 

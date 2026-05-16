@@ -162,8 +162,8 @@ const CreateProductPage: React.FC = () => {
 
     // Enforce limits and special formatting
     if (name === 'title') {
-      // keep title small letters and trim to max
-      const v = value.toLowerCase().slice(0, TITLE_MAX)
+        // enforce max length for title (allow uppercase)
+        const v = value.slice(0, TITLE_MAX)
       setFormData(prev => ({ ...prev, title: v }))
       return
     }

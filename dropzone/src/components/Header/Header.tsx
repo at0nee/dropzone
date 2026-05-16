@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Menu, LogOut, MessageCircle, Search, X, Home, Package, Settings, Wallet, Plus, User, Shield } from 'lucide-react'
 import { useAuthStore } from '../../stores/authStore'
 import { canAccessAdminPanel } from '../../utils/adminData'
@@ -14,6 +14,7 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const { user, logout, isAuthenticated } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchQuery, setSearchQuery] = React.useState('')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [balanceMenuOpen, setBalanceMenuOpen] = useState(false)
@@ -55,11 +56,31 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
-    if (searchQuery.trim()) {
-      navigate(`/catalog?search=${encodeURIComponent(searchQuery)}`)
-      setSearchQuery('')
+    const query = searchQuery.trim()
+    if (query) {
+      navigate(`/catalog?search=${encodeURIComponent(query)}`)
+      return
+    }
+
+    if (location.pathname === '/catalog') {
+      navigate('/catalog', { replace: true })
     }
   }
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value)
+    const query = value.trim()
+    if (location.pathname === '/catalog') {
+      navigate(query ? `/catalog?search=${encodeURIComponent(query)}` : '/catalog', { replace: true })
+    }
+  }
+
+  useEffect(() => {
+    if (location.pathname !== '/catalog') return
+
+    const query = new URLSearchParams(location.search).get('search') || ''
+    setSearchQuery(query)
+  }, [location.pathname, location.search])
 
   const handleNavClick = (path: string) => {
     navigate(path)
@@ -213,7 +234,7 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
               type="text"
               placeholder="Пошук товарів..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
             />
             <button type="submit" title="Пошук">
               <Search size={20} />

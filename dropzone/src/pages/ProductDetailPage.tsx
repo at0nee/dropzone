@@ -241,14 +241,15 @@ const ReviewsSection: React.FC<ReviewsSectionProps> = ({ sellerId, productId }) 
 
   useEffect(() => {
     const loadReviews = async () => {
-      const sellerReviews = await facade.getReviewsByProduct(productId)
+      const sellerReviews = await facade.getReviewsBySeller(sellerId)
       setReviews(sellerReviews || [])
     }
 
     void loadReviews()
   }, [productId])
 
-  const productReviews = reviews.filter(r => r.product_id === productId)
+  // Show all reviews for this seller (may be about different products)
+  const productReviews = reviews || []
 
   return (
     <div className="reviews-section">
@@ -258,7 +259,7 @@ const ReviewsSection: React.FC<ReviewsSectionProps> = ({ sellerId, productId }) 
         {/* Reviews List - only display, no form */}
         <div className="reviews-list">
           {productReviews.length === 0 ? (
-            <p className="no-reviews">Немає відгуків про цей товар від цього продавця</p>
+            <p className="no-reviews">Немає відгуків про цього продавця</p>
           ) : (
             productReviews.map((review) => (
               <div key={review.id} className="review-card">
@@ -269,6 +270,11 @@ const ReviewsSection: React.FC<ReviewsSectionProps> = ({ sellerId, productId }) 
                   </div>
                   <small>{new Date(review.created_at).toLocaleDateString('uk-UA')}</small>
                 </div>
+                {review.product_title && review.product_id ? (
+                  <div className="review-product-info">
+                    Товар: <span className="product-title-ref">{review.product_title}</span>
+                  </div>
+                ) : null}
                 <p className="review-comment">{review.comment}</p>
               </div>
             ))

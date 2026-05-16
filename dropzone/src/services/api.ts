@@ -133,6 +133,7 @@ export const ordersService = {
 
 // Users endpoints
 export const userService = {
+  getAll: () => api.get<ApiResponse<User[]>>('/users'),
   getById: (id: string) => api.get<ApiResponse<User>>(`/users/${id}`),
   update: (id: string, data: Partial<User>) => api.put<ApiResponse<User>>(`/users/${id}`, data),
 }

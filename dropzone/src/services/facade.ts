@@ -6,6 +6,7 @@ type HomeSummaryPayload = {
   popularProducts: any[]
   salesCountBySeller?: Record<string, number>
   salesCountByProduct?: Record<string, number>
+  sellerNamesById?: Record<string, string>
 }
 
 const safeApiCall = async <T>(fn: () => Promise<any>, fallback: T): Promise<T> => {
@@ -20,7 +21,9 @@ const safeApiCall = async <T>(fn: () => Promise<any>, fallback: T): Promise<T> =
 
 export const fetchProducts = async (params?: Record<string, any>) => {
   const fallback = adminData.getStoredProducts()
-  const result = await safeApiCall(() => productService.getAll(params), fallback)
+  // Request a large pageSize by default so frontend can handle client-side paging
+  const defaultParams = { page: 1, pageSize: 1000, ...(params || {}) }
+  const result = await safeApiCall(() => productService.getAll(defaultParams), fallback)
   // API повертає { items, total, page, pageSize }, але нам потрібен масив
   return result?.data?.items || result?.items || (Array.isArray(result) ? result : fallback)
 }
@@ -74,6 +77,12 @@ export const getUser = async (id: string) => {
   const fallback = adminData.findStoredUserById(id) || null
   const result = await safeApiCall(() => userService.getById(id), fallback)
   return result
+}
+
+export const getAllUsers = async () => {
+  const fallback = adminData.getStoredUsers()
+  const result = await safeApiCall(() => userService.getAll(), fallback)
+  return Array.isArray(result) ? result : result?.data || fallback
 }
 
 export const updateUser = async (id: string, data: any) => {
@@ -227,6 +236,7 @@ export const getHomeSummary = async (): Promise<HomeSummaryPayload> => {
       popularProducts: Array.isArray(payload?.popularProducts) ? payload.popularProducts : [],
       salesCountBySeller: payload?.salesCountBySeller || {},
       salesCountByProduct: payload?.salesCountByProduct || {},
+      sellerNamesById: payload?.sellerNamesById || {},
     }
   } catch {
     const fallbackProducts = adminData.getStoredProducts() || []
@@ -235,6 +245,7 @@ export const getHomeSummary = async (): Promise<HomeSummaryPayload> => {
       popularProducts: (Array.isArray(fallbackProducts) ? fallbackProducts : []).slice(0, 8),
       salesCountBySeller: {},
       salesCountByProduct: {},
+      sellerNamesById: {},
     }
   }
 }

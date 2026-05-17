@@ -62,6 +62,7 @@ const CreateProductPage: React.FC = () => {
   const { productId } = useParams<{ productId?: string }>()
   const { user, isAuthenticated, isInitialized } = useAuthStore()
   const { showToast } = useToast()
+  const isAdmin = user?.role === 'admin'
   const [isLoading, setIsLoading] = useState(false)
   const [isEditMode, setIsEditMode] = useState(!!productId)
   const [originalProduct, setOriginalProduct] = useState<any>(null)
@@ -137,7 +138,7 @@ const CreateProductPage: React.FC = () => {
           return
         }
 
-        if (product.seller_id !== user?.id) {
+        if (!isAdmin && product.seller_id !== user?.id) {
           showToast('❌ Ви не можете редагувати цей товар', 'error')
           navigate('/catalog')
           return

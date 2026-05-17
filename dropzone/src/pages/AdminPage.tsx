@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState, useRef } from 'react'
+import VirtualList from '../components/VirtualList/VirtualList'
 import { ArrowLeft, CheckCircle2, MessageCircle, Shield, Users, AlertTriangle, RefreshCw, Search, BadgeInfo, Trash2, Coins } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
@@ -9,7 +10,7 @@ import CustomSelect from '../components/CustomSelect/CustomSelect'
 import { useToast } from '../components/Toast'
 import './AdminPage.css'
 
-type AdminTab = 'overview' | 'users' | 'disputes' | 'products' | 'catalog'
+type AdminTab = 'overview' | 'users' | 'disputes' | 'products' | 'catalog' | 'dbtools'
 
 const roleOptions: Array<{ value: UserRole; label: string }> = [
   { value: 'user', label: 'Користувач' },
@@ -21,6 +22,19 @@ const roleLabel: Record<UserRole, string> = {
   user: 'Користувач',
   support: 'Сапорт',
   admin: 'Адмін',
+}
+
+const batchStageLabel: Record<string, string> = {
+  queued: 'Очікує запуску',
+  started: 'Підготовка',
+  'generating users': 'Генерація користувачів',
+  'generating products': 'Генерація товарів',
+  'generating orders': 'Генерація замовлень',
+  'generating reviews': 'Генерація відгуків',
+  completed: 'Завершено',
+  deleting: 'Видалення',
+  deleted: 'Видалено',
+  failed: 'Помилка',
 }
 
 const flattenCatalogCategories = (categories: CatalogCategory[]) => {
@@ -71,6 +85,7 @@ const AdminPage: React.FC = () => {
   const [chats, setChats] = useState<any[]>([])
   const [chatCount, setChatCount] = useState(0)
   const [products, setProducts] = useState<any[]>([])
+  const [productsTotal, setProductsTotal] = useState<number | null>(null)
   const [catalogCategories, setCatalogCategories] = useState<CatalogCategory[]>([])
   const [selectedDisputeId, setSelectedDisputeId] = useState('')
   const [productSearch, setProductSearch] = useState('')
@@ -90,6 +105,22 @@ const AdminPage: React.FC = () => {
   const [categorySortOrder, setCategorySortOrder] = useState(0)
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<{ userId: string; username: string } | null>(null)
+  // DB tools (admin) state
+  const [dbEntities, setDbEntities] = useState<{ users: boolean; products: boolean; orders: boolean; reviews: boolean }>({ users: false, products: false, orders: false, reviews: false })
+  const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false)
+  const [batchDeleteTarget, setBatchDeleteTarget] = useState<string | null>(null)
+  const [showGeneratedDeleteModal, setShowGeneratedDeleteModal] = useState(false)
+  const [lastRequestedEntities, setLastRequestedEntities] = useState<string[] | null>(null)
+  // UI behavior: require users to be selected when generating products/orders/reviews
+  const [dbCounts, setDbCounts] = useState<{ users?: number; products?: number; orders?: number; reviews?: number }>({})
+  const [currentBatchId, setCurrentBatchId] = useState<string | null>(null)
+  const [batchStatus, setBatchStatus] = useState<any | null>(null)
+  const [polling, setPolling] = useState(false)
+  const [visibleUsersCount, setVisibleUsersCount] = useState(70)
+  const [visibleProductsCount, setVisibleProductsCount] = useState(70)
+  const [adminProductsPage, setAdminProductsPage] = useState(1)
+  const [adminProductsPageSize] = useState(200)
+  const [adminProductsLoadingMore, setAdminProductsLoadingMore] = useState(false)
   const backendBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
   // Backend is enabled if explicitly set OR if we have localStorage auth (means backend worked before)
   const backendEnabled = Boolean(backendBaseUrl) || Boolean(localStorage.getItem('auth_token'))
@@ -141,7 +172,7 @@ const AdminPage: React.FC = () => {
         api.get('/users'),
         api.get('/orders'),
         isAdmin ? api.get('/admin/chat-count') : api.get('/chat/threads'),
-        api.get('/products', { params: { pageSize: 100 } }),
+        api.get('/products', { params: { page: 1, pageSize: adminProductsPageSize, includeOutOfStock: true } }),
         catalogService.getAdminCategories(),
         api.get('/admin/disputes').catch(() => ({ data: { data: [] } })), // Disputes endpoint might not exist
       ])
@@ -163,13 +194,20 @@ const AdminPage: React.FC = () => {
         setOrders(nextOrders)
       }
       
-      const nextProducts = productsRes.data?.data?.items ?? productsRes.data?.data ?? []
+      const rawProducts = productsRes.data?.data?.items ?? productsRes.data?.data ?? []
+      // Dedupe products by id in case of backend/client mismatch
+      const prodMap = new Map<string, any>()
+      for (const p of rawProducts) prodMap.set(p.id, p)
+      const nextProducts = Array.from(prodMap.values())
+      const nextProductsTotal = productsRes.data?.data?.total ?? nextProducts.length
       const nextCatalog = flattenCatalogCategories(catalogRes.data?.data?.categories ?? [])
 
       setUsers(nextUsers)
       setChats(nextChats)
       setChatCount(nextChatCount)
       setProducts(nextProducts)
+      setProductsTotal(nextProductsTotal)
+      setAdminProductsPage(1)
       setCatalogCategories(nextCatalog)
       saveStoredCatalogCategories(nextCatalog)
       setDebugLogs(storedLogs)
@@ -189,6 +227,7 @@ const AdminPage: React.FC = () => {
       setChats(storedChats)
       setChatCount(storedChats.length)
       setProducts(storedProducts)
+      setProductsTotal(storedProducts.length)
       setCatalogCategories(storedCatalog)
       if (storedCatalog.length === 0) {
         saveStoredCatalogCategories([])
@@ -202,6 +241,30 @@ const AdminPage: React.FC = () => {
     }
   }
 
+  const loadMoreAdminProducts = async () => {
+    if (adminProductsLoadingMore) return
+    if (productsTotal !== null && products.length >= productsTotal) return
+    const nextPage = adminProductsPage + 1
+    setAdminProductsLoadingMore(true)
+    try {
+      const res = await api.get('/products', { params: { page: nextPage, pageSize: adminProductsPageSize, includeOutOfStock: true } })
+      const raw = res.data?.data?.items ?? res.data?.data ?? []
+      setProducts((current) => {
+        const map = new Map<string, any>()
+        for (const p of current) map.set(p.id, p)
+        for (const p of raw) map.set(p.id, p)
+        return Array.from(map.values())
+      })
+      const total = res.data?.data?.total ?? (Array.isArray(raw) ? raw.length + products.length : products.length)
+      setProductsTotal(total)
+      setAdminProductsPage(nextPage)
+    } catch (err) {
+      console.error('Failed to load more admin products', err)
+    } finally {
+      setAdminProductsLoadingMore(false)
+    }
+  }
+
   useEffect(() => {
     void loadData()
 
@@ -210,9 +273,41 @@ const AdminPage: React.FC = () => {
     return () => window.removeEventListener('storage', handleStorage)
   }, [])
 
+  // Load last known batchId from localStorage so Delete works after navigation/reload
+  useEffect(() => {
+    const stored = localStorage.getItem('admin_last_batchId')
+    if (stored) setCurrentBatchId(stored)
+  }, [])
+
+  // When a batchId is present (e.g. after navigation), fetch its status once
+  useEffect(() => {
+    if (!currentBatchId) return
+    let mounted = true
+    ;(async () => {
+      try {
+        const res = await api.get(`/admin/db-seed/status/${currentBatchId}`)
+        const status = res.data?.data || null
+        if (!mounted) return
+        setBatchStatus(status)
+        // If batch still in progress, enable polling so UI updates
+        if (status && !['completed', 'failed', 'deleted'].includes(status.stage)) {
+          setPolling(true)
+        } else {
+          setPolling(false)
+        }
+      } catch (err) {
+        console.error('Failed fetching batch status on load', err)
+        setPolling(false)
+      }
+    })()
+
+    return () => { mounted = false }
+  }, [currentBatchId])
+
   useEffect(() => {
     // If role changes under us, ensure active tab is valid for the role
-    const tabsForRole = isAdmin ? ['overview', 'users', 'disputes', 'products', 'catalog'] : role === 'support' ? ['disputes'] : ['overview']
+    // Include 'dbtools' for admins so new tab remains selectable
+    const tabsForRole = isAdmin ? ['overview', 'users', 'disputes', 'products', 'catalog', 'dbtools'] : role === 'support' ? ['disputes'] : ['overview']
     if (!tabsForRole.includes(activeTab)) {
       setActiveTab(tabsForRole[0] as AdminTab)
     }
@@ -232,6 +327,50 @@ const AdminPage: React.FC = () => {
       clearInterval(id)
     }
   }, [])
+
+  // Poll batch status when polling is enabled
+  useEffect(() => {
+    if (!polling || !currentBatchId) return
+    let mounted = true
+    const id = setInterval(async () => {
+      try {
+        const res = await api.get(`/admin/db-seed/status/${currentBatchId}`)
+        const status = res.data?.data || null
+        if (!mounted) return
+        setBatchStatus(status)
+        if (!status || status.stage === 'completed' || status.stage === 'failed' || status.stage === 'deleted') {
+          setPolling(false)
+        }
+      } catch (err) {
+        console.error('Failed polling batch status', err)
+        setPolling(false)
+      }
+    }, 2000);
+
+
+    // immediate fetch
+    (async () => {
+      try {
+        const res = await api.get(`/admin/db-seed/status/${currentBatchId}`)
+        const status = res.data?.data || null
+        if (mounted) setBatchStatus(status)
+      } catch (err) {
+        console.error('Failed fetching batch status', err)
+      }
+    })()
+
+    return () => { mounted = false; clearInterval(id) }
+  }, [polling, currentBatchId])
+
+  // When server reports batch deleted, clear stored batchId and stop polling
+  useEffect(() => {
+    if (!batchStatus) return
+    if (batchStatus.stage === 'deleted') {
+      try { localStorage.removeItem('admin_last_batchId') } catch {}
+      setCurrentBatchId(null)
+      setPolling(false)
+    }
+  }, [batchStatus])
 
   const disputedOrders = useMemo(
     () => orders.filter((order) => order.status === 'disputed'),
@@ -688,7 +827,7 @@ const AdminPage: React.FC = () => {
     return <div className="admin-page loading">Завантаження...</div>
   }
 
-  const adminTabs: AdminTab[] = isAdmin ? ['overview', 'users', 'disputes', 'products', 'catalog'] : role === 'support' ? ['disputes'] : ['overview']
+  const adminTabs: AdminTab[] = isAdmin ? ['overview', 'users', 'disputes', 'products', 'catalog', 'dbtools'] : role === 'support' ? ['disputes'] : ['overview']
 
   return (
     <div className="admin-page">
@@ -722,7 +861,8 @@ const AdminPage: React.FC = () => {
               {tab === 'users' && 'Користувачі'}
               {tab === 'disputes' && 'Спори'}
               {tab === 'products' && 'Товари'}
-              {tab === 'catalog' && 'Категорії'}
+                  {tab === 'catalog' && 'Категорії'}
+                  {tab === 'dbtools' && 'DB Tools'}
             </button>
           ))}
         </div>
@@ -827,6 +967,104 @@ const AdminPage: React.FC = () => {
           </section>
         )}
 
+        {/* DB Tools compact panel (DB Tools tab) */}
+        {activeTab === 'dbtools' && isAdmin && (
+          <div className="dbtools-simple">
+          <div className="entity-row">
+            {[
+              { key: 'users', label: 'Користувачі' },
+              { key: 'products', label: 'Товари' },
+              { key: 'orders', label: 'Замовлення' },
+              { key: 'reviews', label: 'Відгуки' },
+            ].map((item) => (
+              <div
+                key={item.key}
+                className={`entity-card-compact ${dbEntities[item.key as keyof typeof dbEntities] ? 'selected' : ''} ${(!dbEntities.users && item.key !== 'users') ? 'disabled' : ''}`}
+                onClick={() => {
+                  if (item.key !== 'users' && !dbEntities.users) {
+                    showToast('Спочатку виберіть Користувачів', 'info')
+                    return
+                  }
+                  setDbEntities((s) => ({ ...s, [item.key]: !s[item.key as keyof typeof s] }))
+                }}
+              >
+                <div className="entity-compact-head">
+                  <span className="entity-check">{dbEntities[item.key as keyof typeof dbEntities] ? '✓' : ''}</span>
+                  <span className="entity-name">{item.label}</span>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="Кількість"
+                  value={(dbCounts as any)[item.key] ?? ''}
+                  onChange={(e) => setDbCounts((s) => ({ ...s, [item.key]: Number(e.target.value || 0) }))}
+                  onClick={(e) => e.stopPropagation()}
+                  disabled={!dbEntities[item.key as keyof typeof dbEntities]}
+                  className="entity-count-input"
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="dbtools-actions">
+            <button className="generate-cta" disabled={polling} onClick={async () => {
+              try {
+                const entities = Object.entries(dbEntities).filter(([,v]) => v).map(([k]) => k)
+                if (entities.length === 0) { showToast('ℹ️ Виберіть принаймні одну сутність', 'info'); return }
+                if (!dbEntities.users && entities.some((e) => e !== 'users')) {
+                  showToast('Спочатку виберіть Користувачів', 'info')
+                  return
+                }
+                const countsPayload: Record<string, number> = {}
+                for (const key of entities) {
+                  const raw = (dbCounts as any)[key]
+                  const parsed = Number(raw || 0)
+                  if (!parsed || parsed <= 0) {
+                    showToast(`Вкажіть кількість для ${key}`, 'info')
+                    return
+                  }
+                  countsPayload[key] = Math.floor(parsed)
+                }
+                const resp = await api.post('/admin/db-seed/generate', { entities, counts: countsPayload, batchName: `ui-${Date.now()}` })
+                const batchId = resp.data?.data?.batchId || resp.data?.data
+                setLastRequestedEntities(entities)
+                setCurrentBatchId(batchId)
+                try { localStorage.setItem('admin_last_batchId', batchId) } catch {}
+                setBatchStatus({ id: batchId, stage: 'queued', progress: 0, entities })
+                setPolling(true)
+                showToast('✅ Генерація запущена', 'success')
+              } catch (err) {
+                console.error('Failed to start generation', err)
+                showToast('Помилка запуску генерації', 'error')
+              }
+            }}>Generate</button>
+
+            <button className="delete-btn-compact" disabled={polling} onClick={() => {
+              const stored = localStorage.getItem('admin_last_batchId')
+              const batchToDelete = currentBatchId || batchStatus?.id || stored || null
+              if (!batchToDelete) { showToast('ℹ️ Немає активного batchId', 'info'); return }
+              setBatchDeleteTarget(batchToDelete)
+              setBatchDeleteConfirm(true)
+            }}>Delete All</button>
+            
+            <button className="delete-all-generated" disabled={polling} onClick={() => setShowGeneratedDeleteModal(true)}>Delete Generated (all)</button>
+          </div>
+
+          {batchStatus && (
+            <div className="progress-panel">
+              <div className="progress-info">
+                <span><strong>Зараз:</strong> {batchStageLabel[batchStatus.stage] || batchStatus.stage}</span>
+                <span style={{ marginLeft: 'auto' }}>{batchStatus.progress ?? 0}%</span>
+              </div>
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: `${batchStatus.progress ?? 0}%` }}></div>
+              </div>
+              <div className="progress-message">{batchStatus.message || batchStageLabel[batchStatus.stage] || ''}</div>
+            </div>
+          )}
+          </div>
+        )}
+
         {activeTab === 'users' && isAdmin && (
           <section className="admin-section">
             <div className="section-head">
@@ -857,95 +1095,146 @@ const AdminPage: React.FC = () => {
               {visibleUsers.length === 0 ? (
                 <div className="empty-state">Користувачів не знайдено</div>
               ) : (
-                visibleUsers.map((candidate, index) => (
-                  <div key={candidate.id || candidate.email || `user-${index}`} className="users-table-row">
-                    <div>
-                      <strong>{candidate.username || 'Unknown User'}</strong>
-                      <p>{candidate.id || 'unknown-id'}</p>
-                    </div>
-                    <span>{candidate.email || 'unknown@example.com'}</span>
-                    <div className="role-selector-cell">
-                      <button
-                        className={`role-selector-btn role-${candidate.role || 'user'}`}
-                        onClick={() => setOpenRoleMenu(openRoleMenu === candidate.id ? null : candidate.id)}
-                        disabled={candidate.id === user?.id}
-                        title={candidate.id === user?.id ? "Власну роль змінювати не можна" : ""}
-                      >
-                        {roleLabel[candidate.role || 'user']}
-                      </button>
-                      {openRoleMenu === candidate.id && candidate.id !== user?.id && (
-                        <div className="role-selector-menu">
-                          {roleOptions.map((option) => (
-                            <button
-                              key={option.value}
-                              className={`role-option ${candidate.role === option.value ? 'active' : ''}`}
-                              onClick={() => {
-                                handleRoleChange(candidate.id, option.value)
-                              }}
-                            >
-                              {option.label}
+                visibleUsers.length > 300 ? (
+                  <VirtualList
+                    height={600}
+                    itemCount={Math.min(visibleUsers.length, visibleUsersCount)}
+                    itemSize={72}
+                    width={'100%'}
+                  >
+                    {({ index, style }) => {
+                      const candidate = visibleUsers[index]
+                      return (
+                        <div key={candidate.id || candidate.email} className="users-table-row" style={style}>
+                          <div className="user-cell name-cell">
+                            <strong>{candidate.username || candidate.email}</strong>
+                            <div className="muted">{candidate.id}</div>
+                          </div>
+                          <div className="user-cell email-cell">{candidate.email}</div>
+                          <div className="user-cell role-selector-cell">
+                            <button className="role-selector-btn" onClick={() => setOpenRoleMenu(openRoleMenu === candidate.id ? null : candidate.id)}>
+                              {roleLabel[candidate.role || 'user']}
                             </button>
-                          ))}
+                            {openRoleMenu === candidate.id && candidate.id !== user?.id && (
+                              <div className="role-selector-menu">
+                                {roleOptions.map((option) => (
+                                  <button
+                                    key={option.value}
+                                    className={`role-option ${candidate.role === option.value ? 'active' : ''}`}
+                                    onClick={() => handleRoleChange(candidate.id, option.value)}
+                                  >
+                                    {option.label}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div className="user-cell balance-cell">
+                            {editingBalance[candidate.id] !== undefined ? (
+                              <div className="balance-input-group">
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={editingBalance[candidate.id]}
+                                  onChange={(e) => {
+                                    const val = e.target.value.replace(/[^0-9.]/g, '')
+                                    if (val === '' || !isNaN(parseFloat(val))) {
+                                      setEditingBalance({ ...editingBalance, [candidate.id]: val === '' ? 0 : parseFloat(val) })
+                                    }
+                                  }}
+                                  className="balance-input"
+                                  placeholder="0"
+                                />
+                                <button className="balance-save-btn" onClick={() => handleBalanceChange(candidate.id, editingBalance[candidate.id])} title="Зберегти">✓</button>
+                                <button className="balance-cancel-btn" onClick={() => setEditingBalance(({ [candidate.id]: _, ...rest }) => rest)} title="Скасувати">✕</button>
+                              </div>
+                            ) : (
+                              <div className="balance-display">
+                                <span>{Number(candidate.balance || 0).toFixed(2)} ₴</span>
+                                <button className="balance-edit-btn" onClick={() => setEditingBalance({ ...editingBalance, [candidate.id]: Number(candidate.balance || 0) })} title="Редагувати баланс">
+                                  <Coins size={18} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                          <div className="user-cell actions-cell">
+                            <button className="btn-delete-user" onClick={() => handleDeleteUser(candidate.id)} disabled={candidate.id === user?.id} title={candidate.id === user?.id ? 'Не можна видалити себе' : 'Видалити користувача'}>
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
                         </div>
-                      )}
+                      )
+                    }}
+                  </VirtualList>
+                ) : (
+                  visibleUsers.slice(0, visibleUsersCount).map((candidate, index) => (
+                    <div key={candidate.id || candidate.email || `user-${index}`} className="users-table-row">
+                      <div className="user-cell name-cell">
+                        <strong>{candidate.username || candidate.email}</strong>
+                        <div className="muted">{candidate.id}</div>
+                      </div>
+                      <div className="user-cell email-cell">{candidate.email}</div>
+                      <div className="user-cell role-selector-cell">
+                        <button className="role-selector-btn" onClick={() => setOpenRoleMenu(openRoleMenu === candidate.id ? null : candidate.id)}>
+                          {roleLabel[candidate.role || 'user']}
+                        </button>
+                        {openRoleMenu === candidate.id && candidate.id !== user?.id && (
+                          <div className="role-selector-menu">
+                            {roleOptions.map((option) => (
+                              <button
+                                key={option.value}
+                                className={`role-option ${candidate.role === option.value ? 'active' : ''}`}
+                                onClick={() => handleRoleChange(candidate.id, option.value)}
+                              >
+                                {option.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="user-cell balance-cell">
+                        {editingBalance[candidate.id] !== undefined ? (
+                          <div className="balance-input-group">
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={editingBalance[candidate.id]}
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/[^0-9.]/g, '')
+                                if (val === '' || !isNaN(parseFloat(val))) {
+                                  setEditingBalance({ ...editingBalance, [candidate.id]: val === '' ? 0 : parseFloat(val) })
+                                }
+                              }}
+                              className="balance-input"
+                              placeholder="0"
+                            />
+                            <button className="balance-save-btn" onClick={() => handleBalanceChange(candidate.id, editingBalance[candidate.id])} title="Зберегти">✓</button>
+                            <button className="balance-cancel-btn" onClick={() => setEditingBalance(({ [candidate.id]: _, ...rest }) => rest)} title="Скасувати">✕</button>
+                          </div>
+                        ) : (
+                          <div className="balance-display">
+                            <span>{Number(candidate.balance || 0).toFixed(2)} ₴</span>
+                            <button className="balance-edit-btn" onClick={() => setEditingBalance({ ...editingBalance, [candidate.id]: Number(candidate.balance || 0) })} title="Редагувати баланс">
+                              <Coins size={18} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="user-cell actions-cell">
+                        <button className="btn-delete-user" onClick={() => handleDeleteUser(candidate.id)} disabled={candidate.id === user?.id} title={candidate.id === user?.id ? 'Не можна видалити себе' : 'Видалити користувача'}>
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
                     </div>
-                    <div className="balance-cell">
-                      {editingBalance[candidate.id] !== undefined ? (
-                        <div className="balance-input-group">
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={editingBalance[candidate.id]}
-                            onChange={(e) => {
-                              const val = e.target.value.replace(/[^0-9.]/g, '')
-                              if (val === '' || !isNaN(parseFloat(val))) {
-                                setEditingBalance({ ...editingBalance, [candidate.id]: val === '' ? 0 : parseFloat(val) })
-                              }
-                            }}
-                            className="balance-input"
-                            placeholder="0"
-                          />
-                          <button
-                            className="balance-save-btn"
-                            onClick={() => handleBalanceChange(candidate.id, editingBalance[candidate.id])}
-                            title="Зберегти"
-                          >
-                            ✓
-                          </button>
-                          <button
-                            className="balance-cancel-btn"
-                            onClick={() => setEditingBalance(({ [candidate.id]: _, ...rest }) => rest)}
-                            title="Скасувати"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="balance-display">
-                          <span>{Number(candidate.balance || 0).toFixed(2)} ₴</span>
-                          <button
-                            className="balance-edit-btn"
-                            onClick={() => setEditingBalance({ ...editingBalance, [candidate.id]: Number(candidate.balance || 0) })}
-                            title="Редагувати баланс"
-                          >
-                            <Coins size={18} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button
-                        className="btn-delete-user"
-                        onClick={() => handleDeleteUser(candidate.id)}
-                        disabled={candidate.id === user?.id}
-                        title={candidate.id === user?.id ? 'Не можна видалити себе' : 'Видалити користувача'}
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  ))
+                )
               )}
+
+              {visibleUsersCount < visibleUsers.length ? (
+                <div style={{ width: '100%', textAlign: 'center', marginTop: 12 }}>
+                  <button className="btn-load-more-reviews" onClick={() => setVisibleUsersCount((c) => c + 70)}>Показати ще 70</button>
+                </div>
+              ) : null}
             </div>
           </section>
         )}
@@ -955,7 +1244,8 @@ const AdminPage: React.FC = () => {
             <div className="section-head">
               <div>
                 <h2>Товари</h2>
-                <p>Перегляд, пошук та управління товарами в системі.</p>
+                    <p>Перегляд, пошук та управління товарами в системі.</p>
+                    <p className="muted">Всього товарів: {productsTotal !== null ? productsTotal : products.length}</p>
               </div>
               <div className="search-wrap">
                 <Search size={16} />
@@ -984,20 +1274,59 @@ const AdminPage: React.FC = () => {
                 {visibleProducts.length === 0 ? (
                   <div className="empty-state">За запитом нічого не знайдено</div>
                 ) : (
-                  visibleProducts.map((p: any, idx: number) => (
-                    <div key={p.id || `prod-${idx}`} className="products-table-row">
-                      <div className="prod-img"><img src={p.image_url} alt={p.title} /></div>
-                      <div className="prod-title"><strong>{p.title}</strong><div className="prod-id">{p.id}</div></div>
-                      <div className="prod-seller">{p.seller_id}</div>
-                      <div className="prod-price">{Number(p.price || 0).toFixed(2)} ₴</div>
-                      <div className="prod-stock">{p.stock > 0 ? `${p.stock} шт.` : 'Немає'}</div>
-                      <div className="prod-actions">
-                        <button className="btn-edit-product" onClick={() => handleEditProduct(p.id)}>Редагувати</button>
-                        <button className="btn-delete-product" onClick={() => setProductToDelete(p.id)}>Видалити</button>
+                  visibleProducts.length > 300 ? (
+                    <VirtualList
+                      height={600}
+                      itemCount={Math.min(visibleProducts.length, visibleProductsCount)}
+                      itemSize={88}
+                      width={'100%'}
+                    >
+                      {({ index, style }) => {
+                        const p = visibleProducts[index]
+                        return (
+                          <div key={p.id} className="products-table-row" style={style}>
+                            <div className="prod-img"><img loading="lazy" decoding="async" src={p.image_url} alt={p.title} /></div>
+                            <div className="prod-title"><strong>{p.title}</strong><div className="prod-id">{p.id}</div></div>
+                            <div className="prod-seller">{p.seller_id}</div>
+                            <div className="prod-price">{Number(p.price || 0).toFixed(2)} ₴</div>
+                            <div className="prod-stock">{p.stock > 0 ? `${p.stock} шт.` : 'Немає'}</div>
+                            <div className="prod-actions">
+                              <button className="btn-edit-product" onClick={() => handleEditProduct(p.id)}>Редагувати</button>
+                              <button className="btn-delete-product" onClick={() => setProductToDelete(p.id)}>Видалити</button>
+                            </div>
+                          </div>
+                        )
+                      }}
+                    </VirtualList>
+                  ) : (
+                    visibleProducts.slice(0, visibleProductsCount).map((p: any, idx: number) => (
+                      <div key={p.id || `prod-${idx}`} className="products-table-row">
+                        <div className="prod-img"><img src={p.image_url} alt={p.title} /></div>
+                        <div className="prod-title"><strong>{p.title}</strong><div className="prod-id">{p.id}</div></div>
+                        <div className="prod-seller">{p.seller_id}</div>
+                        <div className="prod-price">{Number(p.price || 0).toFixed(2)} ₴</div>
+                        <div className="prod-stock">{p.stock > 0 ? `${p.stock} шт.` : 'Немає'}</div>
+                        <div className="prod-actions">
+                          <button className="btn-edit-product" onClick={() => handleEditProduct(p.id)}>Редагувати</button>
+                          <button className="btn-delete-product" onClick={() => setProductToDelete(p.id)}>Видалити</button>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    ))
+                  )
                 )}
+                  {visibleProductsCount < visibleProducts.length ? (
+                    <div style={{ width: '100%', textAlign: 'center', marginTop: 12 }}>
+                      <button className="btn-load-more-reviews" onClick={() => setVisibleProductsCount((c) => c + 70)}>Показати ще 70</button>
+                    </div>
+                  ) : null}
+
+                  {(productsTotal !== null && products.length < productsTotal) && (
+                    <div style={{ width: '100%', textAlign: 'center', marginTop: 12 }}>
+                      <button className="btn-load-more-reviews" onClick={loadMoreAdminProducts} disabled={adminProductsLoadingMore}>
+                        {adminProductsLoadingMore ? 'Завантаження...' : `Завантажити ще (${products.length}/${productsTotal})`}
+                      </button>
+                    </div>
+                  )}
               </div>
             )}
           </section>
@@ -1319,6 +1648,63 @@ const AdminPage: React.FC = () => {
               <button className="modal-btn-confirm danger" onClick={handleConfirmDelete}>
                 Видалити користувача
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete Batch Confirmation Modal */}
+      {batchDeleteConfirm && (
+        <div className="confirm-modal-overlay" role="dialog" aria-modal="true" aria-label="Підтвердження видалення батчу">
+          <div className="confirm-modal">
+            <h3>Підтвердьте видалення батчу</h3>
+            <p>Ви дійсно хочете видалити всі записи, згенеровані в батчі <strong>{batchDeleteTarget}</strong>?</p>
+            <div className="confirm-modal-actions">
+              <button className="ghost-btn" onClick={() => { setBatchDeleteConfirm(false); setBatchDeleteTarget(null); }}>
+                Скасувати
+              </button>
+              <button className="decision-btn seller" onClick={async () => {
+                try {
+                  const batchToDelete = batchDeleteTarget || currentBatchId || localStorage.getItem('admin_last_batchId')
+                  if (!batchToDelete) { showToast('ℹ️ Немає active batch', 'info'); return }
+                  await api.post('/admin/db-seed/delete', { batchId: batchToDelete })
+                  setPolling(true)
+                  showToast('✅ Видалення запущено', 'success')
+                } catch (err) {
+                  console.error('Failed to start batch deletion', err)
+                  showToast('Помилка видалення', 'error')
+                } finally {
+                  setBatchDeleteConfirm(false)
+                  setBatchDeleteTarget(null)
+                }
+              }}>
+                Підтвердити
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete All Generated Confirmation Modal */}
+      {showGeneratedDeleteModal && (
+        <div className="modal-overlay" onClick={() => setShowGeneratedDeleteModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>🗑️ Видалити ВСІ згенеровані дані?</h2>
+            <p>Ця дія назавжди видалить усі записи, створені генератором (id починаються на <strong>gen-</strong>). Резервна копія категорично рекомендована.</p>
+            <div className="modal-actions">
+              <button className="modal-btn-cancel" onClick={() => setShowGeneratedDeleteModal(false)}>Скасувати</button>
+              <button className="modal-btn-confirm danger" onClick={async () => {
+                try {
+                  setShowGeneratedDeleteModal(false)
+                  setPolling(true)
+                  await api.delete('/admin/generated')
+                  showToast('✅ Згенеровані дані видалено', 'success')
+                  await loadData()
+                } catch (err) {
+                  console.error('Failed to delete generated data', err)
+                  showToast('Помилка при видаленні згенерованих даних', 'error')
+                } finally {
+                  setPolling(false)
+                }
+              }}>Видалити ВСЕ</button>
             </div>
           </div>
         </div>

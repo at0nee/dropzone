@@ -29,7 +29,7 @@ const HomePage: React.FC = () => {
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const products = await facade.fetchProducts()
+        const products = await facade.fetchProducts({ page: 1, pageSize: 50 })
         const savedReviews = await facade.getAllReviews()
         const summary = await getHomeSummary()
 

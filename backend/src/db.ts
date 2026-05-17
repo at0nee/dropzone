@@ -348,26 +348,162 @@ const seedDb = (): Database => {
 export const hashPassword = sha256
 export const generateId = makeId
 
-// Таблиці уже створені вручну в Workbench, тому ensureSchema не створює їх
+// Ensure DB schema exists. Automatically create missing tables and indexes.
 const ensureSchema = async () => {
-  // Просто перевіримо, що таблиці існують
+  // Create core tables if missing. Use IF NOT EXISTS to be idempotent.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${USERS_TABLE} (
+      id VARCHAR(64) PRIMARY KEY,
+      email VARCHAR(255) NOT NULL,
+      username VARCHAR(255) NOT NULL,
+      name VARCHAR(255),
+      avatar VARCHAR(1024),
+      role VARCHAR(32) NOT NULL DEFAULT 'user',
+      balance DOUBLE NOT NULL DEFAULT 0,
+      rating DOUBLE NOT NULL DEFAULT 0,
+      reviews_count INT NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      password_hash VARCHAR(255)
+    )
+  `)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${PRODUCTS_TABLE} (
+      id VARCHAR(64) PRIMARY KEY,
+      title VARCHAR(255) NOT NULL,
+      description TEXT,
+      price DOUBLE NOT NULL DEFAULT 0,
+      stock INT NOT NULL DEFAULT 0,
+      category VARCHAR(128),
+      subcategory VARCHAR(128),
+      image_url VARCHAR(1024),
+      images TEXT,
+      seller_id VARCHAR(64),
+      seller_name VARCHAR(255),
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL
+    )
+  `)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${REVIEWS_TABLE} (
+      id VARCHAR(64) PRIMARY KEY,
+      product_id VARCHAR(64) NULL,
+      seller_id VARCHAR(64) NOT NULL,
+      buyer_id VARCHAR(64) NOT NULL,
+      buyer_name VARCHAR(255),
+      rating INT NOT NULL DEFAULT 0,
+      text TEXT,
+      comment TEXT,
+      order_id VARCHAR(64),
+      product_title VARCHAR(255),
+      created_at DATETIME NOT NULL
+    )
+  `)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${ORDERS_TABLE} (
+      id VARCHAR(64) PRIMARY KEY,
+      product_id VARCHAR(64) NULL,
+      product_name VARCHAR(255),
+      seller_id VARCHAR(64) NOT NULL,
+      seller_name VARCHAR(255),
+      buyer_id VARCHAR(64) NOT NULL,
+      buyer_name VARCHAR(255),
+      price DOUBLE NOT NULL DEFAULT 0,
+      quantity INT NOT NULL DEFAULT 1,
+      status VARCHAR(32) NOT NULL DEFAULT 'pending',
+      created_at DATETIME NOT NULL,
+      completed_at DATETIME NULL,
+      dispute_resolution VARCHAR(32) NULL,
+      dispute_resolved_by VARCHAR(64) NULL,
+      dispute_resolved_at DATETIME NULL
+    )
+  `)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${CHATS_TABLE} (
+      id VARCHAR(64) PRIMARY KEY,
+      seller_id VARCHAR(64),
+      seller_name VARCHAR(255),
+      buyer_id VARCHAR(64),
+      buyer_name VARCHAR(255),
+      product_id VARCHAR(64),
+      product_name VARCHAR(255),
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL
+    )
+  `)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${CHAT_MESSAGES_TABLE} (
+      id VARCHAR(64) PRIMARY KEY,
+      chat_id VARCHAR(64) NOT NULL,
+      sender_id VARCHAR(64) NOT NULL,
+      sender_name VARCHAR(255),
+      sender_role VARCHAR(32),
+      text TEXT,
+      timestamp DATETIME NOT NULL,
+      is_system_message TINYINT(1) NOT NULL DEFAULT 0
+    )
+  `)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${CARTS_TABLE} (
+      user_id VARCHAR(64) NOT NULL,
+      product_id VARCHAR(64) NOT NULL,
+      quantity INT NOT NULL DEFAULT 1,
+      PRIMARY KEY (user_id, product_id)
+    )
+  `)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${SESSIONS_TABLE} (
+      token VARCHAR(128) PRIMARY KEY,
+      user_id VARCHAR(64) NOT NULL,
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL
+    )
+  `)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${CATALOG_CATEGORIES_TABLE} (
+      id VARCHAR(64) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      parent_id VARCHAR(64) NULL,
+      sort_order INT NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL
+    )
+  `)
+
+  // Create common indexes to improve query performance on large datasets
+  // MySQL doesn't support CREATE INDEX IF NOT EXISTS until 8.0.13; wrapping in try to be safe.
   try {
-    await pool.query(`SELECT 1 FROM ${USERS_TABLE} LIMIT 1`)
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS ${CATALOG_CATEGORIES_TABLE} (
-        id VARCHAR(64) PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        parent_id VARCHAR(64) NULL,
-        sort_order INT NOT NULL DEFAULT 0,
-        created_at DATETIME NOT NULL,
-        updated_at DATETIME NOT NULL,
-        CONSTRAINT fk_catalog_categories_parent FOREIGN KEY (parent_id) REFERENCES ${CATALOG_CATEGORIES_TABLE}(id) ON DELETE CASCADE
-      )
-    `)
-  } catch (err) {
-    console.error('❌ Таблиці не знайдені! Створіть їх в Workbench за інструкцією.')
-    throw new Error('Database tables not found. Please create them manually using the provided SQL.')
-  }
+    await pool.query(`CREATE INDEX idx_products_seller ON ${PRODUCTS_TABLE} (seller_id)`)
+  } catch {}
+  try {
+    await pool.query(`CREATE INDEX idx_products_created ON ${PRODUCTS_TABLE} (created_at)`)
+  } catch {}
+  try {
+    await pool.query(`CREATE INDEX idx_products_category ON ${PRODUCTS_TABLE} (category)`)
+  } catch {}
+  try {
+    await pool.query(`CREATE INDEX idx_products_subcategory ON ${PRODUCTS_TABLE} (subcategory)`)
+  } catch {}
+  try {
+    await pool.query(`CREATE INDEX idx_reviews_seller ON ${REVIEWS_TABLE} (seller_id)`)
+  } catch {}
+  try {
+    await pool.query(`CREATE INDEX idx_reviews_product ON ${REVIEWS_TABLE} (product_id)`)
+  } catch {}
+  try {
+    await pool.query(`CREATE INDEX idx_orders_product ON ${ORDERS_TABLE} (product_id)`)
+  } catch {}
+  try {
+    await pool.query(`CREATE INDEX idx_orders_seller ON ${ORDERS_TABLE} (seller_id)`)
+  } catch {}
 }
 
 const mapDate = (value: any) => {
@@ -671,71 +807,63 @@ export const saveDb = async (db: Database) => {
   const connection = await pool.getConnection()
   try {
     await connection.beginTransaction()
-    await connection.query(`DELETE FROM ${CHAT_MESSAGES_TABLE}`)
-    await connection.query(`DELETE FROM ${CHATS_TABLE}`)
-    await connection.query(`DELETE FROM ${REVIEWS_TABLE}`)
-    await connection.query(`DELETE FROM ${ORDERS_TABLE}`)
-    await connection.query(`DELETE FROM ${CARTS_TABLE}`)
-    await connection.query(`DELETE FROM ${PRODUCTS_TABLE}`)
-    await connection.query(`DELETE FROM ${CATALOG_CATEGORIES_TABLE}`)
-    await connection.query(`DELETE FROM ${USERS_TABLE}`)
 
-    for (const user of db.users) {
-      await connection.execute(
-        `INSERT INTO ${USERS_TABLE} (id, email, username, name, avatar, role, balance, rating, reviews_count, created_at, updated_at, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [user.id, user.email, user.username, user.name || null, user.avatar || null, user.role, user.balance, user.rating, user.reviews_count, toMysqlDateTime(user.created_at), toMysqlDateTime(user.updated_at), user.passwordHash]
-      )
-    }
+    const batchSize = 500
 
-    for (const product of db.products) {
-      await connection.execute(
-        `INSERT INTO ${PRODUCTS_TABLE} (id, title, description, price, stock, category, subcategory, image_url, images, seller_id, seller_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [product.id, product.title, product.description, product.price, product.stock, product.category, product.subcategory || null, product.image_url || null, JSON.stringify(product.images || []), product.seller_id, product.seller_name, toMysqlDateTime(product.created_at), toMysqlDateTime(product.updated_at)]
-      )
-    }
-
-    for (const review of db.reviews) {
-      await connection.execute(
-        `INSERT INTO ${REVIEWS_TABLE} (id, product_id, seller_id, buyer_id, buyer_name, rating, text, comment, order_id, product_title, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [review.id, review.product_id, review.seller_id, review.buyer_id, review.buyer_name, review.rating, review.text, review.comment || null, review.order_id || null, review.product_title || null, toMysqlDateTime(review.created_at)]
-      )
-    }
-
-    for (const order of db.orders) {
-      await connection.execute(
-        `INSERT INTO ${ORDERS_TABLE} (id, product_id, product_name, seller_id, seller_name, buyer_id, buyer_name, price, quantity, status, created_at, completed_at, dispute_resolution, dispute_resolved_by, dispute_resolved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [order.id, order.product_id, order.product_name, order.seller_id, order.seller_name, order.buyer_id, order.buyer_name, order.price, order.quantity, order.status, toMysqlDateTime(order.created_at), order.completed_at ? toMysqlDateTime(order.completed_at) : null, order.dispute_resolution || null, order.dispute_resolved_by || null, order.dispute_resolved_at ? toMysqlDateTime(order.dispute_resolved_at) : null]
-      )
-    }
-
-    for (const chat of db.chats) {
-      await connection.execute(
-        `INSERT INTO ${CHATS_TABLE} (id, seller_id, seller_name, buyer_id, buyer_name, product_id, product_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [chat.id, chat.seller_id, chat.seller_name, chat.buyer_id, chat.buyer_name, chat.product_id || null, chat.product_name || null, toMysqlDateTime(chat.created_at), toMysqlDateTime(chat.updated_at)]
-      )
-      for (const message of chat.messages || []) {
-        await connection.execute(
-          `INSERT INTO ${CHAT_MESSAGES_TABLE} (id, chat_id, sender_id, sender_name, sender_role, text, timestamp, is_system_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [message.id, chat.id, message.sender_id, message.sender_name, message.sender_role || 'user', message.text, toMysqlDateTime(message.timestamp), message.isSystemMessage ? 1 : 0]
-        )
+    const batchInsertUpsert = async (table: string, columns: string[], rows: any[][], updateColumns: string[]) => {
+      if (!rows.length) return
+      for (let i = 0; i < rows.length; i += batchSize) {
+        const chunk = rows.slice(i, i + batchSize)
+        const placeholders = chunk.map(() => `(${columns.map(() => '?').join(',')})`).join(',')
+        const values = chunk.flat()
+        const update = updateColumns.length > 0 ? ` ON DUPLICATE KEY UPDATE ${updateColumns.map(col => `${col}=VALUES(${col})`).join(',')}` : ''
+        const sql = `INSERT INTO ${table} (${columns.join(',')}) VALUES ${placeholders}${update}`
+        await connection.query(sql, values)
       }
     }
 
+    // Upsert users
+    const userRows = db.users.map((u) => [u.id, u.email, u.username, u.name || null, u.avatar || null, u.role, u.balance, u.rating, u.reviews_count, toMysqlDateTime(u.created_at), toMysqlDateTime(u.updated_at), u.passwordHash])
+    await batchInsertUpsert(USERS_TABLE, ['id','email','username','name','avatar','role','balance','rating','reviews_count','created_at','updated_at','password_hash'], userRows, ['email','username','name','avatar','role','balance','rating','reviews_count','updated_at','password_hash'])
+
+    // Upsert products
+    const productRows = db.products.map((p) => [p.id, p.title, p.description, p.price, p.stock, p.category, p.subcategory || null, p.image_url || null, JSON.stringify(p.images || []), p.seller_id, p.seller_name, toMysqlDateTime(p.created_at), toMysqlDateTime(p.updated_at)])
+    await batchInsertUpsert(PRODUCTS_TABLE, ['id','title','description','price','stock','category','subcategory','image_url','images','seller_id','seller_name','created_at','updated_at'], productRows, ['title','description','price','stock','category','subcategory','image_url','images','seller_id','seller_name','updated_at'])
+
+    // Upsert reviews
+    const reviewRows = db.reviews.map((r) => [r.id, r.product_id || null, r.seller_id, r.buyer_id, r.buyer_name, r.rating, r.text, r.comment || null, r.order_id || null, r.product_title || null, toMysqlDateTime(r.created_at)])
+    await batchInsertUpsert(REVIEWS_TABLE, ['id','product_id','seller_id','buyer_id','buyer_name','rating','text','comment','order_id','product_title','created_at'], reviewRows, ['text','rating','comment','product_title'])
+
+    // Upsert orders
+    const orderRows = db.orders.map((o) => [o.id, o.product_id || null, o.product_name, o.seller_id, o.seller_name, o.buyer_id, o.buyer_name, o.price, o.quantity, o.status, toMysqlDateTime(o.created_at), o.completed_at ? toMysqlDateTime(o.completed_at) : null, o.dispute_resolution || null, o.dispute_resolved_by || null, o.dispute_resolved_at ? toMysqlDateTime(o.dispute_resolved_at) : null])
+    await batchInsertUpsert(ORDERS_TABLE, ['id','product_id','product_name','seller_id','seller_name','buyer_id','buyer_name','price','quantity','status','created_at','completed_at','dispute_resolution','dispute_resolved_by','dispute_resolved_at'], orderRows, ['status','completed_at','dispute_resolution','dispute_resolved_by','dispute_resolved_at'])
+
+    // Upsert chats and messages
+    const chatRows = db.chats.map((c) => [c.id, c.seller_id, c.seller_name, c.buyer_id, c.buyer_name, c.product_id || null, c.product_name || null, toMysqlDateTime(c.created_at), toMysqlDateTime(c.updated_at)])
+    await batchInsertUpsert(CHATS_TABLE, ['id','seller_id','seller_name','buyer_id','buyer_name','product_id','product_name','created_at','updated_at'], chatRows, ['seller_name','buyer_name','product_id','product_name','updated_at'])
+
+    const messageRows: any[][] = []
+    for (const chat of db.chats) {
+      for (const m of chat.messages || []) {
+        messageRows.push([m.id, chat.id, m.sender_id, m.sender_name, m.sender_role || 'user', m.text, toMysqlDateTime(m.timestamp), m.isSystemMessage ? 1 : 0])
+      }
+    }
+    await batchInsertUpsert(CHAT_MESSAGES_TABLE, ['id','chat_id','sender_id','sender_name','sender_role','text','timestamp','is_system_message'], messageRows, ['text','timestamp','is_system_message'])
+
+    // Upsert carts (assume unique key on user_id+product_id)
+    const cartRows: any[][] = []
     for (const [userId, items] of Object.entries(db.carts)) {
       for (const item of items) {
-        await connection.execute(
-          `INSERT INTO ${CARTS_TABLE} (user_id, product_id, quantity) VALUES (?, ?, ?)`,
-          [userId, item.product_id, item.quantity]
-        )
+        cartRows.push([userId, item.product_id, item.quantity])
       }
     }
-
-    for (const category of sortCatalogCategoriesForInsert(db.catalog_categories)) {
-      await connection.execute(
-        `INSERT INTO ${CATALOG_CATEGORIES_TABLE} (id, name, parent_id, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
-        [category.id, category.name, category.parent_id || null, category.sort_order, toMysqlDateTime(category.created_at), toMysqlDateTime(category.updated_at)]
-      )
+    if (cartRows.length) {
+      await batchInsertUpsert(CARTS_TABLE, ['user_id','product_id','quantity'], cartRows, ['quantity'])
     }
+
+    // Upsert catalog categories (sorted to satisfy parent constraints)
+    const catRows = sortCatalogCategoriesForInsert(db.catalog_categories).map((c) => [c.id, c.name, c.parent_id || null, c.sort_order, toMysqlDateTime(c.created_at), toMysqlDateTime(c.updated_at)])
+    await batchInsertUpsert(CATALOG_CATEGORIES_TABLE, ['id','name','parent_id','sort_order','created_at','updated_at'], catRows, ['name','parent_id','sort_order','updated_at'])
 
     await connection.commit()
   } catch (error) {
@@ -827,4 +955,69 @@ export const buildCatalogTree = (categories: CatalogCategory[]) => {
         .filter((category) => category.parent_id === root.id)
         .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)),
     }))
+}
+
+// Delete all rows created with a specific generated prefix (e.g. 'gen-')
+export const deleteGeneratedPrefix = async (prefix = 'gen-') => {
+  const like = `${prefix}%`
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+
+    // Reviews tied to generated users or generated products
+    await connection.query(
+      `DELETE r FROM ${REVIEWS_TABLE} r
+       LEFT JOIN ${PRODUCTS_TABLE} p ON r.product_id = p.id
+       WHERE r.seller_id LIKE ? OR r.buyer_id LIKE ? OR p.seller_id LIKE ?`,
+      [like, like, like]
+    )
+
+    // Orders tied to generated users or generated products
+    await connection.query(
+      `DELETE o FROM ${ORDERS_TABLE} o
+       LEFT JOIN ${PRODUCTS_TABLE} p ON o.product_id = p.id
+       WHERE o.seller_id LIKE ? OR o.buyer_id LIKE ? OR p.seller_id LIKE ?`,
+      [like, like, like]
+    )
+
+    // Chat messages related to generated chats or sent by generated users
+    await connection.query(
+      `DELETE m FROM ${CHAT_MESSAGES_TABLE} m
+       JOIN ${CHATS_TABLE} c ON m.chat_id = c.id
+       WHERE m.sender_id LIKE ? OR c.seller_id LIKE ? OR c.buyer_id LIKE ?`,
+      [like, like, like]
+    )
+
+    // Chats where participants are generated
+    await connection.query(`DELETE FROM ${CHATS_TABLE} WHERE seller_id LIKE ? OR buyer_id LIKE ?`, [like, like])
+
+    // Carts for generated users
+    await connection.query(
+      `DELETE c FROM ${CARTS_TABLE} c
+       JOIN ${USERS_TABLE} u ON c.user_id = u.id
+       WHERE u.id LIKE ?`,
+      [like]
+    )
+
+    // Sessions for generated users
+    await connection.query(
+      `DELETE s FROM ${SESSIONS_TABLE} s
+       JOIN ${USERS_TABLE} u ON s.user_id = u.id
+       WHERE u.id LIKE ?`,
+      [like]
+    )
+
+    // Products by generated sellers
+    await connection.query(`DELETE FROM ${PRODUCTS_TABLE} WHERE seller_id LIKE ?`, [like])
+
+    // Finally users themselves
+    await connection.query(`DELETE FROM ${USERS_TABLE} WHERE id LIKE ?`, [like])
+
+    await connection.commit()
+  } catch (err) {
+    await connection.rollback()
+    throw err
+  } finally {
+    connection.release()
+  }
 }

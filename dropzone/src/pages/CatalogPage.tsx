@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState, useRef } from 'react'
+import VirtualList from '../components/VirtualList/VirtualList'
 import { useSearchParams } from 'react-router-dom'
 import { Filter, Search } from 'lucide-react'
 import ProductCard from '../components/ProductCard/ProductCard'
@@ -53,6 +54,8 @@ const CatalogPage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [page, setPage] = useState(1)
+  const [totalProducts, setTotalProducts] = useState<number | null>(null)
   
   const [categories, setCategories] = useState<CatalogCategory[]>(DEFAULT_CATEGORIES)
   const [apps, setApps] = useState<AppItem[]>(DEFAULT_APPS)
@@ -63,8 +66,8 @@ const CatalogPage: React.FC = () => {
   const [selectedProductType, setSelectedProductType] = useState('')
   const [appSearchQuery, setAppSearchQuery] = useState('')
   const [priceRange, setPriceRange] = useState([0, 10000])
-  const [visibleCount, setVisibleCount] = useState(12)
-  const pageSize = 12
+  const [visibleCount, setVisibleCount] = useState(24)
+  const pageSize = 24
   const rootCategories = useMemo(() => categories.filter((category) => !category.parent_id), [categories])
 
   // Завантажити дані з JSON
@@ -110,116 +113,90 @@ const CatalogPage: React.FC = () => {
   
 
   useEffect(() => {
-    const fetchProducts = async () => {
+    // Reset paging when filters change
+    setProducts([])
+    setPage(1)
+    setTotalProducts(null)
+    const controller = new AbortController()
+
+    const loadPage = async (pageToLoad: number) => {
       try {
         setLoading(true)
         const searchQuery = (searchParams.get('search') || '').trim().toLowerCase()
+        const params: Record<string, any> = { page: pageToLoad, pageSize, search: searchQuery }
+        if (selectedCategory) params.category = selectedCategory
+        const res = await productService.getAll(params)
+        const payload = res.data?.data || res.data || {}
+        const items = payload.items || payload || []
+        const total = payload.total ?? (Array.isArray(items) ? items.length : null)
 
-        // Load products via facade (api with fallback to local storage)
-        let allProducts = (await facade.fetchProducts()) || []
-
-        // Apply search (title / description / seller) across combined dataset
-        if (searchQuery) {
-          allProducts = allProducts.filter((p: any) => {
-            const title = (p.title || '').toLowerCase()
-            const desc = (p.description || '').toLowerCase()
-            const sellerName = (p.seller?.username || p.seller_name || '').toLowerCase()
-            return title.includes(searchQuery) || desc.includes(searchQuery) || sellerName.includes(searchQuery)
-          })
-        }
-
-        // If category selected, match against multiple product fields (category, title, subcategory)
-        if (selectedCategory) {
-          // Normalize app names/ids for robust matching against product.category/title/subcategory
-          const categoryApps = apps
-            .filter(app => app.category === selectedCategory)
-            .map(app => ({
-              idNorm: (app.id || '').toLowerCase().replace(/[^a-z0-9]/g, ''),
-              nameNorm: (app.name || '').toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, ''),
-            }))
-
-          allProducts = allProducts.filter((p: any) => {
-            const pCategory = (p.category || '').toLowerCase()
-            const pCategoryNorm = pCategory.replace(/\s+/g, '').replace(/[^a-z0-9]/g, '')
-            const pTitle = (p.title || '').toLowerCase()
-            const pTitleNorm = pTitle.replace(/\s+/g, '').replace(/[^a-z0-9]/g, '')
-            const pSub = (p.subcategory || '').toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '')
-
-            return categoryApps.some(app =>
-              pCategoryNorm === app.idNorm ||
-              pCategoryNorm === app.nameNorm ||
-              app.idNorm === pTitleNorm ||
-              app.nameNorm === pTitleNorm ||
-              pTitleNorm.includes(app.nameNorm) ||
-              pSub === app.nameNorm ||
-              pSub === app.idNorm
-            )
-          })
-        }
-
-        // If specific app selected, match by app name against title/category/subcategory
-        if (selectedApp) {
-          const appEntry = apps.find(a => a.id === selectedApp)
-          const selectedAppId = (selectedApp || '').toLowerCase()
-          const selectedAppName = (appEntry?.name || '').toLowerCase()
-          const selectedAppIdNorm = selectedAppId.replace(/[^a-z0-9]/g, '')
-          const selectedAppNameNorm = selectedAppName.replace(/\s+/g, '').replace(/[^a-z0-9]/g, '')
-
-          allProducts = allProducts.filter((p: any) => {
-            const pCategory = (p.category || '').toLowerCase()
-            const pCategoryNorm = pCategory.replace(/\s+/g, '').replace(/[^a-z0-9]/g, '')
-            const pTitle = (p.title || '').toLowerCase()
-            const pTitleNorm = pTitle.replace(/\s+/g, '').replace(/[^a-z0-9]/g, '')
-            const pSub = (p.subcategory || '').toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '')
-
-            return (
-              pCategoryNorm === selectedAppIdNorm ||
-              pCategoryNorm === selectedAppNameNorm ||
-              pTitleNorm.includes(selectedAppNameNorm) ||
-              pTitleNorm.includes(selectedAppIdNorm) ||
-              pSub === selectedAppNameNorm ||
-              pSub === selectedAppIdNorm
-            )
-          })
-        }
-
-        // Filter by product type (subcategory) — compare normalized values
-        if (selectedProductType) {
-          const selectedNorm = selectedProductType.toLowerCase().replace(/\s+/g, '')
-          allProducts = allProducts.filter((p: any) => {
-            const pSub = (p.subcategory || '').toLowerCase().replace(/\s+/g, '')
-            return pSub === selectedNorm
-          })
-        }
-
-        // Price range
-        allProducts = allProducts.filter((p: any) => p.price >= priceRange[0] && p.price <= priceRange[1])
-
-        // Hide products that are out of stock
-        allProducts = allProducts.filter((p: any) => Number(p.stock || 0) > 0)
-
-        setProducts(allProducts)
-      } catch (error) {
-        console.error('Failed to fetch products:', error)
-        setProducts(getStoredProducts().filter((p: any) => Number(p.stock || 0) > 0))
+        // Merge new items and dedupe by id to avoid duplicates after multiple page loads
+        setProducts((current) => {
+          const map = new Map<string, typeof items[0]>()
+          for (const p of current) map.set(p.id, p)
+          for (const p of (items || [])) map.set(p.id, p)
+          return Array.from(map.values())
+        })
+        // Prefer server-provided total, otherwise use deduped length
+        setTotalProducts(total)
+      } catch (err) {
+        console.error('Failed to fetch products page:', err)
+        // fallback to facade for local data
+        const all = (await facade.fetchProducts()) || []
+        setProducts(all.filter((p: any) => Number(p.stock || 0) > 0))
+        setTotalProducts(all.length)
       } finally {
         setLoading(false)
       }
     }
 
-    fetchProducts()
+    void loadPage(1)
+
+    return () => controller.abort()
   }, [searchParams, selectedCategory, selectedApp, selectedProductType, priceRange, apps])
 
   useEffect(() => {
     setVisibleCount(pageSize)
     setLoadingMore(false)
-  }, [products, selectedCategory, selectedApp, selectedProductType, appSearchQuery, priceRange])
+  }, [selectedCategory, selectedApp, selectedProductType, appSearchQuery, priceRange])
 
   const visibleProducts = useMemo(() => products.slice(0, visibleCount), [products, visibleCount])
   const hasMoreProducts = visibleCount < products.length
 
+  const listRef = useRef<any>(null)
+  const itemsPerRow = 3
+  const rowCount = Math.max(1, Math.ceil(products.length / itemsPerRow))
+  const rowHeight = 340
+
   const handleShowMore = () => {
-    if (loadingMore || !hasMoreProducts) return
+    if (loadingMore) return
+    if (!hasMoreProducts && totalProducts && products.length < totalProducts) {
+      // need to load next server page
+      const nextPage = page + 1
+      setLoadingMore(true)
+      productService.getAll({ page: nextPage, pageSize, category: selectedCategory, search: (searchParams.get('search') || '').trim().toLowerCase() })
+        .then((res) => {
+          const payload = res.data?.data || res.data || {}
+          const items = payload.items || []
+          setProducts((current) => {
+            const map = new Map<string, typeof items[0]>()
+            for (const p of current) map.set(p.id, p)
+            for (const p of items) map.set(p.id, p)
+            return Array.from(map.values())
+          })
+          setPage(nextPage)
+          setVisibleCount((c) => c + (Array.isArray(items) ? items.length : 0))
+        })
+        .catch((err) => {
+          console.error('Failed to load more products:', err)
+        })
+        .finally(() => {
+          setLoadingMore(false)
+        })
+      return
+    }
+
+    if (!hasMoreProducts) return
     setLoadingMore(true)
     window.setTimeout(() => {
       setVisibleCount((current) => Math.min(current + pageSize, products.length))
@@ -379,15 +356,41 @@ const CatalogPage: React.FC = () => {
             <div className="loading-state">Завантаження...</div>
           ) : products.length > 0 ? (
             <>
-              <div className="results-info">
-                <p>Знайдено {products.length} товарів, показано {visibleProducts.length}</p>
+                  <div className="results-info">
+                    <p>Знайдено {totalProducts !== null ? totalProducts : products.length} товарів, показано {visibleProducts.length}</p>
+                  </div>
+              <div className="products-grid-virtual">
+                {products.length > 80 ? (
+                  <VirtualList
+                    ref={listRef}
+                    height={Math.min(840, rowCount * rowHeight)}
+                    itemCount={rowCount}
+                    itemSize={rowHeight}
+                    width={'100%'}
+                  >
+                    {({ index, style }) => {
+                      const start = index * itemsPerRow
+                      const rowItems = products.slice(start, start + itemsPerRow)
+                      return (
+                        <div className="product-row" style={style} key={index}>
+                          {rowItems.map((product) => (
+                            <div className="product-cell" key={product.id}>
+                              <ProductCard product={product} />
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    }}
+                  </VirtualList>
+                ) : (
+                  <div className="products-grid">
+                    {visibleProducts.map((product) => (
+                      <ProductCard key={product.id} product={product} />
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="products-grid">
-                {visibleProducts.map((product) => (
-                  <ProductCard key={product.id} product={product} />
-                ))}
-              </div>
-              {hasMoreProducts && (
+              {(hasMoreProducts || (totalProducts !== null && products.length < totalProducts)) && (
                 <div className="catalog-show-more-wrap">
                   <button
                     className="catalog-show-more-btn"

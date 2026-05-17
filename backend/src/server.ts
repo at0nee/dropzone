@@ -11,6 +11,7 @@ import {
   hashPassword,
   publicProduct,
   publicUser,
+  deleteGeneratedPrefix,
   loadSessions,
   removeSession,
   saveDb,
@@ -31,6 +32,81 @@ const __dirname = path.dirname(__filename)
 const app = express()
 const PORT = Number(process.env.PORT || 3000)
 const sessions = new Map<string, string>()
+// In-memory tracking of generate batches and progress
+const seedBatchMap: any = {}
+
+// Simple in-memory cache for products endpoint
+const productsCache = new Map<string, { expires: number; payload: any }>()
+const PRODUCTS_CACHE_TTL = Number(process.env.PRODUCTS_CACHE_TTL_MS || 5000)
+
+const makeProductsCacheKey = (params: Record<string, any>) => {
+  // include relevant params only
+  const keyObj = {
+    search: params.search || '',
+    category: params.category || '',
+    page: Number(params.page || 1),
+    pageSize: Number(params.pageSize || 12),
+    includeOutOfStock: params.includeOutOfStock ? '1' : '0',
+  }
+  return JSON.stringify(keyObj)
+}
+
+const clearProductsCache = () => {
+  productsCache.clear()
+}
+
+// Background persistence queue to avoid blocking during large generations
+type Snapshot = {
+  users: any[]
+  products: any[]
+  reviews: any[]
+  orders: any[]
+  chats: any[]
+  carts: Record<string, any[]>
+  catalog_categories: any[]
+}
+
+const persistQueue: Snapshot[] = []
+let persistInProgress = false
+
+const enqueueSaveSnapshot = (dbSnapshot: Snapshot) => {
+  // store a deep clone to avoid mutations while queueing
+  const clone = JSON.parse(JSON.stringify(dbSnapshot)) as Snapshot
+  persistQueue.push(clone)
+  processPersistQueue().catch((err) => console.error('Persist queue error', err))
+}
+
+const processPersistQueue = async () => {
+  if (persistInProgress) return
+  persistInProgress = true
+  try {
+    while (persistQueue.length) {
+      const snap = persistQueue.shift()!
+      try {
+        await saveDb({
+          users: snap.users,
+          products: snap.products,
+          reviews: snap.reviews,
+          orders: snap.orders,
+          chats: snap.chats,
+          carts: snap.carts,
+          catalog_categories: snap.catalog_categories,
+        } as any)
+        // Invalidate products cache after persistence
+        try { clearProductsCache() } catch (e) { /* ignore */ }
+      } catch (err) {
+        console.error('Failed to persist snapshot, re-queueing', err)
+        // push snapshot back and break to avoid tight loop
+        persistQueue.unshift(snap)
+        await new Promise((r) => setTimeout(r, 1000))
+      }
+      // slight delay to let event loop breathe
+      await new Promise((r) => setTimeout(r, 50))
+    }
+  } finally {
+    persistInProgress = false
+  }
+}
 
 // Setup CORS and JSON parsing
 app.use(cors({ origin: true, credentials: true }))
@@ -110,6 +186,42 @@ const asNumber = (value: unknown, fallback = 0) => {
 
 const normalizeText = (value: unknown) => String(value || '').trim()
 
+// Compact batch id to keep generated record IDs within DB column limits
+const makeBatchId = () => `gen-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+
+const shortId = (len = 8) => Math.random().toString(36).slice(2, 2 + len)
+
+const pickByIndex = <T,>(items: T[], index: number) => items[index % items.length]
+
+const userNameParts = {
+  firstNames: ['Olena', 'Iryna', 'Andrii', 'Sofiia', 'Taras', 'Marta', 'Viktor', 'Diana', 'Oleh', 'Nadia'],
+  lastNames: ['Shevchenko', 'Koval', 'Bondarenko', 'Melnyk', 'Tkachenko', 'Marchenko', 'Petrenko', 'Kravets', 'Hrytsenko', 'Moroz'],
+}
+
+const productNameParts = {
+  adjectives: ['Urban', 'Modern', 'Premium', 'Classic', 'Bright', 'Cozy', 'Fresh', 'Smart', 'Rapid', 'Prime'],
+  nouns: ['Chair', 'Lamp', 'Backpack', 'Table', 'Bottle', 'Notebook', 'Sneakers', 'Jacket', 'Speaker', 'Watch'],
+}
+
+const updateBatch = (id: string, data: Partial<{ stage: string; progress: number; message?: string }>) => {
+  const b = seedBatchMap[id]
+  if (!b) return
+  if (data.stage !== undefined) b.stage = data.stage
+  if (data.progress !== undefined) b.progress = data.progress
+  if (data.message !== undefined) b.message = data.message
+}
+
+const rememberBatchIds = (batchId: string, key: 'userIds' | 'productIds' | 'orderIds' | 'reviewIds', ids: string[]) => {
+  if (!seedBatchMap[batchId]) return
+  seedBatchMap[batchId][key] = ids
+}
+
+const getBatchIds = (batchId: string, key: 'userIds' | 'productIds' | 'orderIds' | 'reviewIds') => {
+  const batch = seedBatchMap[batchId]
+  const ids = batch?.[key]
+  return Array.isArray(ids) ? ids : []
+}
+
 const getGlobalHomeSummary = (db: Database) => {
   const completedOrders = (db.orders || []).filter((order) => order.status === 'completed')
 
@@ -159,6 +271,142 @@ const getGlobalHomeSummary = (db: Database) => {
     salesCountBySeller: Object.fromEntries(salesCountBySeller),
     sellerNamesById,
   }
+}
+
+// Simple fake data generators (use existing db.generateId for uniqueness)
+const fakeEmail = (username: string, batchId: string, idx: number) => `${username.toLowerCase()}.${idx}@${batchId}.local`
+
+const generateUsers = (db: Database, batchId: string, count: number) => {
+  const next: User[] = []
+  for (let i = 0; i < count; i++) {
+    const id = `${batchId}-user-${i}-${shortId(8)}`
+    const firstName = pickByIndex(userNameParts.firstNames, i)
+    const lastName = pickByIndex(userNameParts.lastNames, i + 3)
+    const username = `${firstName.toLowerCase()}-${lastName.toLowerCase()}-${i + 1}`
+    const nowIso = new Date().toISOString()
+    const user: User = {
+      id,
+      email: fakeEmail(username, batchId.replace(/[:.]/g, '-'), i),
+      username,
+      name: username,
+      role: 'user',
+      balance: 0,
+      rating: 0,
+      reviews_count: 0,
+      created_at: nowIso,
+      updated_at: nowIso,
+      passwordHash: hashPassword('password'),
+    }
+    db.users.push(user)
+    next.push(user)
+  }
+  return next
+}
+
+const generateProducts = (db: Database, batchId: string, count: number) => {
+  const nowIso = new Date().toISOString()
+  const trackedUserIds = getBatchIds(batchId, 'userIds')
+  // Prefer exact users created in this batch; fall back to prefix matching for older batches
+  let sellers = trackedUserIds.length > 0
+    ? db.users.filter((u) => u.role === 'user' && trackedUserIds.includes(u.id))
+    : db.users.filter((u) => u.role === 'user' && String(u.id).startsWith(batchId))
+  if (sellers.length === 0) return []  // No fallback - only batch users
+  const next: Product[] = []
+  for (let i = 0; i < count; i++) {
+    const seller = sellers[i % sellers.length]
+    const id = `${batchId}-prod-${i}-${shortId(8)}`
+    const adjective = pickByIndex(productNameParts.adjectives, i)
+    const noun = pickByIndex(productNameParts.nouns, i + 4)
+    const product: Product = {
+      id,
+      title: `${adjective} ${noun} ${i + 1}`,
+      description: 'Auto-generated sample product',
+      price: Math.floor(Math.random() * 500) + 10,
+      stock: Math.floor(Math.random() * 100),
+      category: 'generated',
+      images: [],
+      seller_id: seller.id,
+      seller_name: seller.username,
+      created_at: nowIso,
+      updated_at: nowIso,
+    }
+    db.products.push(product)
+    next.push(product)
+  }
+  return next
+}
+
+const generateOrders = (db: Database, batchId: string, count: number) => {
+  const nowIso = new Date().toISOString()
+  const trackedProductIds = getBatchIds(batchId, 'productIds')
+  const trackedUserIds = getBatchIds(batchId, 'userIds')
+  // Only use entities generated in this batch
+  let products = trackedProductIds.length > 0
+    ? db.products.filter((p) => trackedProductIds.includes(p.id))
+    : db.products.filter((p) => String(p.id).startsWith(batchId))
+  let buyers = trackedUserIds.length > 0
+    ? db.users.filter((u) => u.role === 'user' && trackedUserIds.includes(u.id))
+    : db.users.filter((u) => u.role === 'user' && String(u.id).startsWith(batchId))
+  if (products.length === 0 || buyers.length === 0) return []
+  const next: Order[] = []
+  for (let i = 0; i < count; i++) {
+    const product = products[i % products.length]
+    const buyer = buyers[(i + 3) % buyers.length]
+    const id = `${batchId}-order-${i}-${shortId(8)}`
+    const order: Order = {
+      id,
+      product_id: product.id,
+      product_name: product.title,
+      seller_id: product.seller_id,
+      seller_name: product.seller_name,
+      buyer_id: buyer.id,
+      buyer_name: buyer.username,
+      price: product.price,
+      quantity: 1,
+      status: Math.random() > 0.5 ? 'completed' : 'pending',
+      created_at: nowIso,
+    }
+    if (order.status === 'completed') order.completed_at = nowIso
+    db.orders.push(order)
+    next.push(order)
+  }
+  return next
+}
+
+const generateReviews = (db: Database, batchId: string, count: number) => {
+  const nowIso = new Date().toISOString()
+  const trackedProductIds = getBatchIds(batchId, 'productIds')
+  const trackedUserIds = getBatchIds(batchId, 'userIds')
+  // Only use entities generated in this batch
+  let products = trackedProductIds.length > 0
+    ? db.products.filter((p) => trackedProductIds.includes(p.id))
+    : db.products.filter((p) => String(p.id).startsWith(batchId))
+  let buyers = trackedUserIds.length > 0
+    ? db.users.filter((u) => u.role === 'user' && trackedUserIds.includes(u.id))
+    : db.users.filter((u) => u.role === 'user' && String(u.id).startsWith(batchId))
+  if (products.length === 0 || buyers.length === 0) return []
+  const next: Review[] = []
+  for (let i = 0; i < count; i++) {
+    const product = products[i % products.length]
+    const buyer = buyers[(i + 5) % buyers.length]
+    const id = `${batchId}-rev-${i}-${shortId(8)}`
+    const text = `Auto review ${i} for ${product.title}`
+    const review: Review = {
+      id,
+      product_id: product.id,
+      seller_id: product.seller_id,
+      buyer_id: buyer.id,
+      buyer_name: buyer.username,
+      rating: Math.floor(Math.random() * 5) + 1,
+      text,
+      comment: text,
+      product_title: product.title,
+      created_at: nowIso,
+    }
+    db.reviews.push(review)
+    next.push(review)
+  }
+  return next
 }
 
 const calculateSellerStats = (db: Database, sellerId: string) => {
@@ -424,25 +672,58 @@ app.get('/products', asyncHandler(async (req, res) => {
   const search = normalizeText(req.query.search).toLowerCase()
   const category = normalizeText(req.query.category).toLowerCase()
   const page = Math.max(1, asNumber(req.query.page, 1))
-  const pageSize = Math.min(100, Math.max(1, asNumber(req.query.pageSize, 12)))
+  // Allow very large page sizes for admin uses (practically unlimited, capped at 1M)
+  const pageSize = Math.min(1000000, Math.max(1, asNumber(req.query.pageSize, 12)))
+  const includeOutOfStock = String(req.query.includeOutOfStock || '').toLowerCase() === 'true' || String(req.query.includeOutOfStock || '') === '1'
+
+  // Try products cache
+  const cacheKey = makeProductsCacheKey({ search, category, page, pageSize, includeOutOfStock })
+  const cached = productsCache.get(cacheKey)
+  if (cached && cached.expires > Date.now()) {
+    return send(res, cached.payload)
+  }
 
   const items = db.products
     .filter((product) => {
       const matchesSearch = !search || [product.title, product.description, product.seller_name].join(' ').toLowerCase().includes(search)
       const matchesCategory = !category || product.category.toLowerCase() === category || (product.subcategory || '').toLowerCase() === category
-      const hasStock = (product.stock || 0) > 0
+      const hasStock = includeOutOfStock ? true : ((product.stock || 0) > 0)
       return matchesSearch && matchesCategory && hasStock
     })
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
   const sliced = items.slice((page - 1) * pageSize, page * pageSize).map((product) => publicProduct(product, db))
-  send(res, { items: sliced, total: items.length, page, pageSize })
+  const payload = { items: sliced, total: items.length, page, pageSize }
+  productsCache.set(cacheKey, { expires: Date.now() + PRODUCTS_CACHE_TTL, payload })
+  send(res, payload)
 }))
 
 // Provide catalog apps/categories for frontend UI
 app.get('/catalog/apps', asyncHandler(async (_req, res) => {
   const db = await ensureDb()
   send(res, buildCatalogApiPayload(db.catalog_categories))
+}))
+
+// Admin: permanently delete all generated data (by id prefix)
+app.delete('/admin/generated', asyncHandler(async (req, res) => {
+  const db = await ensureDb()
+  const admin = requireRole(db, req, res, ['admin'])
+  if (!admin) return
+
+  // Delete rows in DB with prefix 'gen-'
+  await deleteGeneratedPrefix('gen-')
+  // Clear products cache since many products/users removed
+  clearProductsCache()
+
+  // Clean up any in-memory sessions that referenced generated users
+  for (const [token, userId] of Array.from(sessions.entries())) {
+    if (String(userId).startsWith('gen-')) {
+      sessions.delete(token)
+      try { await removeSession(token) } catch (e) { /* ignore */ }
+    }
+  }
+
+  send(res, { ok: true })
 }))
 
 app.get('/admin/catalog/categories', asyncHandler(async (req, res) => {
@@ -587,6 +868,7 @@ app.post('/products', asyncHandler(async (req, res) => {
 
   db.products.unshift(product)
   await saveDb(db)
+  clearProductsCache()
   send(res, publicProduct(product, db), 201)
 }))
 
@@ -620,6 +902,7 @@ app.put('/products/:id', asyncHandler(async (req, res) => {
   product.updated_at = new Date().toISOString()
 
   await saveDb(db)
+  clearProductsCache()
   send(res, publicProduct(product, db))
 }))
 
@@ -671,6 +954,7 @@ app.delete('/products/:id', asyncHandler(async (req, res) => {
   }
 
   await saveDb(db)
+  clearProductsCache()
   send(res, { deleted: true })
 }))
 
@@ -1259,6 +1543,180 @@ app.get('/chat/threads/:id/messages', asyncHandler(async (req, res) => {
     return fail(res, 403, 'Forbidden')
   }
   send(res, thread.messages)
+}))
+
+// Admin DB seed: generate test data
+app.post('/admin/db-seed/generate', asyncHandler(async (req, res) => {
+  const db = await ensureDb()
+  const admin = requireRole(db, req, res, ['admin'])
+  if (!admin) return
+
+  const payload = req.body || {}
+  const entities: string[] = Array.isArray(payload.entities) ? payload.entities : []
+  const counts = payload.counts || {}
+  const batchName = normalizeText(payload.batchName) || undefined
+
+  const batchId = makeBatchId()
+  seedBatchMap[batchId] = { id: batchId, name: batchName, stage: 'pending', progress: 0, message: 'Queued' };
+
+  // Run generation asynchronously but report immediate batchId
+  (async () => {
+    try {
+      updateBatch(batchId, { stage: 'started', progress: 0, message: 'Initializing' })
+      const db2 = await ensureDb()
+
+      let totalSteps = 0
+      let doneSteps = 0
+      const steps: Array<() => Promise<void>> = []
+
+      if (entities.includes('users') || counts.users) {
+        const c = Number(counts.users || 0)
+        totalSteps += c > 0 ? c : 0
+        steps.push(async () => {
+          updateBatch(batchId, { stage: 'generating users', message: 'Generating users' })
+          const createdUsers = generateUsers(db2, batchId, c)
+          rememberBatchIds(batchId, 'userIds', createdUsers.map((user) => user.id))
+          doneSteps += c
+        })
+      }
+
+      if (entities.includes('products') || counts.products) {
+        const c = Number(counts.products || 0)
+        totalSteps += c > 0 ? c : 0
+        steps.push(async () => {
+          updateBatch(batchId, { stage: 'generating products', message: 'Generating products' })
+          const createdProducts = generateProducts(db2, batchId, c)
+          rememberBatchIds(batchId, 'productIds', createdProducts.map((product) => product.id))
+          doneSteps += c
+        })
+      }
+
+      if (entities.includes('orders') || counts.orders) {
+        const c = Number(counts.orders || 0)
+        totalSteps += c > 0 ? c : 0
+        steps.push(async () => {
+          updateBatch(batchId, { stage: 'generating orders', message: 'Generating orders' })
+          const createdOrders = generateOrders(db2, batchId, c)
+          rememberBatchIds(batchId, 'orderIds', createdOrders.map((order) => order.id))
+          doneSteps += c
+        })
+      }
+
+      if (entities.includes('reviews') || counts.reviews) {
+        const c = Number(counts.reviews || 0)
+        totalSteps += c > 0 ? c : 0
+        steps.push(async () => {
+          updateBatch(batchId, { stage: 'generating reviews', message: 'Generating reviews' })
+          const createdReviews = generateReviews(db2, batchId, c)
+          rememberBatchIds(batchId, 'reviewIds', createdReviews.map((review) => review.id))
+          doneSteps += c
+        })
+      }
+
+      // Execute steps sequentially and persist after each step
+      for (let i = 0; i < steps.length; i++) {
+        await steps[i]()
+        const progress = totalSteps > 0 ? Math.round((doneSteps / totalSteps) * 100) : Math.round(((i + 1) / steps.length) * 100)
+        updateBatch(batchId, { progress, message: `Step ${i + 1} of ${steps.length} completed` })
+        // Persist snapshot in background to avoid blocking generation
+        enqueueSaveSnapshot({
+          users: db2.users,
+          products: db2.products,
+          reviews: db2.reviews,
+          orders: db2.orders,
+          chats: db2.chats,
+          carts: db2.carts,
+          catalog_categories: db2.catalog_categories,
+        })
+      }
+
+      updateBatch(batchId, { stage: 'completed', progress: 100, message: 'Generation completed' })
+    } catch (err) {
+      console.error('DB-seed generation failed', err)
+      updateBatch(batchId, { stage: 'failed', message: String(err) })
+    }
+  })()
+
+  send(res, { batchId })
+}))
+
+// Admin DB seed: delete batch
+app.post('/admin/db-seed/delete', asyncHandler(async (req, res) => {
+  const db = await ensureDb()
+  const admin = requireRole(db, req, res, ['admin'])
+  if (!admin) return
+
+  const batchId = normalizeText(req.body?.batchId)
+  if (!batchId) return fail(res, 400, 'batchId is required')
+  // Ensure a batch entry exists so the client can poll status
+  if (!seedBatchMap[batchId]) {
+    seedBatchMap[batchId] = { id: batchId, name: undefined, stage: 'deleting', progress: 0, message: 'Queued for deletion' }
+  } else {
+    updateBatch(batchId, { stage: 'deleting', progress: 0, message: 'Deleting records' })
+  }
+
+  // Run deletion asynchronously and return immediately so UI can poll
+  (async () => {
+    try {
+      updateBatch(batchId, { stage: 'deleting', progress: 0, message: 'Deleting records' })
+      const db2 = await ensureDb()
+      const trackedUserIds = getBatchIds(batchId, 'userIds')
+      const trackedProductIds = getBatchIds(batchId, 'productIds')
+      const trackedOrderIds = getBatchIds(batchId, 'orderIds')
+      const trackedReviewIds = getBatchIds(batchId, 'reviewIds')
+      const starts = (id: string) => id && id.startsWith(batchId)
+      const matchesTracked = (id: string, trackedIds: string[]) => trackedIds.length > 0 ? trackedIds.includes(id) : starts(id)
+
+      // Remove records by type and update progress between steps
+      const totalTypes = 5
+      let doneTypes = 0
+
+      db2.users = db2.users.filter((u) => !matchesTracked(u.id, trackedUserIds))
+      doneTypes += 1
+      updateBatch(batchId, { progress: Math.round((doneTypes / totalTypes) * 100), message: 'Users removed' })
+
+      db2.products = db2.products.filter((p) => !matchesTracked(p.id, trackedProductIds))
+      doneTypes += 1
+      updateBatch(batchId, { progress: Math.round((doneTypes / totalTypes) * 100), message: 'Products removed' })
+
+      db2.orders = db2.orders.filter((o) => !matchesTracked(o.id, trackedOrderIds))
+      doneTypes += 1
+      updateBatch(batchId, { progress: Math.round((doneTypes / totalTypes) * 100), message: 'Orders removed' })
+
+      db2.reviews = db2.reviews.filter((r) => !matchesTracked(r.id, trackedReviewIds))
+      doneTypes += 1
+      updateBatch(batchId, { progress: Math.round((doneTypes / totalTypes) * 100), message: 'Reviews removed' })
+
+      // Remove chat threads created by batch
+      db2.chats = db2.chats.filter((t) => !starts(t.id))
+      doneTypes += 1
+      updateBatch(batchId, { progress: 100, message: 'Chats removed' })
+
+      // Unlink product references in orders/reviews if product removed
+      db2.reviews = db2.reviews.map((review) => review.product_id && (trackedProductIds.includes(String(review.product_id)) || starts(String(review.product_id))) ? { ...review, product_id: null } : review)
+      db2.orders = db2.orders.map((order) => order.product_id && (trackedProductIds.includes(String(order.product_id)) || starts(String(order.product_id))) ? { ...order, product_id: null } : order)
+
+      await saveDb(db2)
+      updateBatch(batchId, { stage: 'deleted', progress: 100, message: 'Deletion completed' })
+      // Clear products cache now that DB was modified
+      clearProductsCache()
+    } catch (err) {
+      console.error('DB-seed deletion failed', err)
+      updateBatch(batchId, { stage: 'failed', message: String(err) })
+    }
+  })()
+
+  // Return immediately with batchId so client can poll
+  send(res, { batchId })
+}))
+
+app.get('/admin/db-seed/status/:id', asyncHandler(async (req, res) => {
+  const db = await ensureDb()
+  const admin = requireRole(db, req, res, ['admin'])
+  if (!admin) return
+  const id = normalizeText(req.params.id)
+  const status = seedBatchMap[id] || null
+  send(res, status)
 }))
 
 app.post('/chat/threads/:id/messages', asyncHandler(async (req, res) => {

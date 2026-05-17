@@ -22,7 +22,7 @@ const safeApiCall = async <T>(fn: () => Promise<any>, fallback: T): Promise<T> =
 export const fetchProducts = async (params?: Record<string, any>) => {
   const fallback = adminData.getStoredProducts()
   // Request a large pageSize by default so frontend can handle client-side paging
-  const defaultParams = { page: 1, pageSize: 1000, ...(params || {}) }
+  const defaultParams = { page: 1, pageSize: 10000, ...(params || {}) }
   const result = await safeApiCall(() => productService.getAll(defaultParams), fallback)
   // API повертає { items, total, page, pageSize }, але нам потрібен масив
   return result?.data?.items || result?.items || (Array.isArray(result) ? result : fallback)

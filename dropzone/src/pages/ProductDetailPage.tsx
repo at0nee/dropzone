@@ -27,12 +27,6 @@ const ProductDetailPage: React.FC = () => {
         
         const foundProduct = await facade.fetchProductById(id)
         setProduct(foundProduct)
-        if (foundProduct?.seller_id) {
-          const loadedReviews = await facade.getReviewsBySeller(foundProduct.seller_id)
-          setSellerReviews(loadedReviews || [])
-        } else {
-          setSellerReviews([])
-        }
       } catch (error) {
         console.error('Failed to load product:', error)
         setProduct(null)
@@ -132,7 +126,7 @@ const ProductDetailPage: React.FC = () => {
         {/* Gallery */}
         <div className="product-gallery">
           <div className="main-image">
-            <img src={product.image_url || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22500%22 height=%22350%22%3E%3Crect fill=%22%23e0e0e0%22 width=%22500%22 height=%22350%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 font-family=%22Arial%22 font-size=%2220%22 fill=%22%23999%22 text-anchor=%22middle%22 dy=%22.3em%22%3EProduct Detail%3C/text%3E%3C/svg%3E'} alt={product.title} />
+            <img loading="lazy" decoding="async" src={product.image_url || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22500%22 height=%22350%22%3E%3Crect fill=%22%23e0e0e0%22 width=%22500%22 height=%22350%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 font-family=%22Arial%22 font-size=%2220%22 fill=%22%23999%22 text-anchor=%22middle%22 dy=%22.3em%22%3EProduct Detail%3C/text%3E%3C/svg%3E'} alt={product.title} />
           </div>
         </div>
 
@@ -238,11 +232,13 @@ interface ReviewsSectionProps {
 
 const ReviewsSection: React.FC<ReviewsSectionProps> = ({ sellerId, productId }) => {
   const [reviews, setReviews] = useState<any[]>([])
+  const [visibleCount, setVisibleCount] = useState(12)
 
   useEffect(() => {
     const loadReviews = async () => {
       const sellerReviews = await facade.getReviewsBySeller(sellerId)
       setReviews(sellerReviews || [])
+      setVisibleCount(12)
     }
 
     void loadReviews()
@@ -250,6 +246,8 @@ const ReviewsSection: React.FC<ReviewsSectionProps> = ({ sellerId, productId }) 
 
   // Show all reviews for this seller (may be about different products)
   const productReviews = reviews || []
+  const visibleReviews = productReviews.slice(0, visibleCount)
+  const hasMoreReviews = visibleCount < productReviews.length
 
   return (
     <div className="reviews-section">
@@ -258,10 +256,10 @@ const ReviewsSection: React.FC<ReviewsSectionProps> = ({ sellerId, productId }) 
 
         {/* Reviews List - only display, no form */}
         <div className="reviews-list">
-          {productReviews.length === 0 ? (
+          {visibleReviews.length === 0 ? (
             <p className="no-reviews">Немає відгуків про цього продавця</p>
           ) : (
-            productReviews.map((review) => (
+            visibleReviews.map((review) => (
               <div key={review.id} className="review-card">
                 <div className="review-header">
                   <div className="reviewer-info">
@@ -280,6 +278,12 @@ const ReviewsSection: React.FC<ReviewsSectionProps> = ({ sellerId, productId }) 
             ))
           )}
         </div>
+
+        {hasMoreReviews ? (
+          <button className="btn-load-more-reviews" onClick={() => setVisibleCount((count) => count + 12)}>
+            Показати ще 12
+          </button>
+        ) : null}
       </div>
     </div>
   )

@@ -398,6 +398,173 @@
 }
 .conn-connected { color: #6ee7b7; }
 .conn-disconnected { color: #ff9b9b; }
+
+/* DB Tools styles - SIMPLIFIED ULTRA-MINIMAL */
+
+.dbtools-simple {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.entity-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.entity-card-compact {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(0,212,255,0.08);
+  padding: 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.15s ease;
+}
+.entity-card-compact:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
+.entity-card-compact.selected { border-color: rgba(0,212,255,0.4); background: rgba(0,212,255,0.06); }
+.entity-card-compact.disabled { opacity: 0.45; cursor: not-allowed; }
+
+.entity-compact-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.entity-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  background: rgba(0,0,0,0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.entity-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entity-count-input {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(0,212,255,0.08);
+  background: rgba(0,0,0,0.08);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+.entity-count-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.entity-count-input::placeholder {
+  color: rgba(255,255,255,0.3);
+}
+
+/* Remove native number input spinners */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* Action buttons */
+.dbtools-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.generate-cta {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 153, 255, 0.2));
+  border: 1px solid rgba(0, 212, 255, 0.3);
+  color: var(--accent-primary);
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 212, 255, 0.08);
+  transition: all 0.2s ease;
+}
+.generate-cta:hover { background: linear-gradient(135deg, rgba(0, 212, 255, 0.3), rgba(0, 153, 255, 0.3)); border-color: rgba(0, 212, 255, 0.5); box-shadow: 0 4px 12px rgba(0, 212, 255, 0.15); }
+.generate-cta:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.delete-btn-compact {
+  background: rgba(255,80,80,0.1);
+  border: 1px solid rgba(255,80,80,0.25);
+  color: #ff8888;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.delete-btn-compact:hover { background: rgba(255,80,80,0.15); }
+.delete-btn-compact:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Progress panel - only shown when polling */
+.progress-panel {
+  background: rgba(0,212,255,0.04);
+  border: 1px solid rgba(0,212,255,0.1);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.progress-bar {
+  height: 8px;
+  background: rgba(0,0,0,0.15);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(0,212,255,0.7), rgba(0,122,255,0.9));
+  transition: width 300ms ease;
+  border-radius: 6px;
+}
+
+.progress-message {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  min-height: 18px;
+}
+
+/* Legacy compatibility (not used anymore) */
+
 .conn-mock { color: #fbbf24; }
 .conn-unknown { color: var(--text-secondary); }
 
@@ -1349,6 +1516,33 @@
   border: 1px solid transparent;
   transition: all 0.2s ease;
   flex-shrink: 0;
+}
+
+.dbtools-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.delete-all-generated {
+  background: linear-gradient(180deg, rgba(255, 82, 82, 0.12), rgba(255, 82, 82, 0.08));
+  color: #ff7a7a;
+  border: 1px solid rgba(255, 82, 82, 0.18);
+  padding: 0.65rem 1rem;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+  transition: all 0.18s ease;
+}
+
+.delete-all-generated:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(255, 82, 82, 0.18), rgba(255, 82, 82, 0.12));
+  box-shadow: 0 6px 18px rgba(255, 82, 82, 0.06);
+}
+
+.delete-all-generated:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .balance-edit-btn {

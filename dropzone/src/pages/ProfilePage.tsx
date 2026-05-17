@@ -12,8 +12,10 @@ const ProfilePage: React.FC = () => {
   const navigate = useNavigate()
   const [isEditing, setIsEditing] = useState(false)
   const [myReviews, setMyReviews] = useState<any[]>([])
+  const [visibleMyReviews, setVisibleMyReviews] = useState(12)
   const [myProducts, setMyProducts] = useState<any[]>([])
   const [sellerReviews, setSellerReviews] = useState<any[]>([])
+  const [visibleSellerReviews, setVisibleSellerReviews] = useState(12)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [selectedTab, setSelectedTab] = useState<'products' | 'reviews' | 'seller-reviews'>('products')
   const [productToDelete, setProductToDelete] = useState<string | null>(null)
@@ -33,16 +35,18 @@ const ProfilePage: React.FC = () => {
           useAuthStore.setState({ user: currentUser })
         }
 
-        const products = (await facade.fetchProducts()) as any[]
+        const products = (await facade.fetchProducts({ page: 1, pageSize: 500 })) as any[]
         const myProds = (products || []).filter((p: any) => p.seller_id === user?.id)
         setMyProducts(myProds)
 
         const savedReviews = (await facade.getAllReviews()) as any[]
         const myRevs = (savedReviews || []).filter((r: any) => r.buyer_id === user?.id)
         setMyReviews(myRevs)
+        setVisibleMyReviews(12)
 
         const sellerRevs = (savedReviews || []).filter((r: any) => r.seller_id === user?.id)
         setSellerReviews(sellerRevs)
+        setVisibleSellerReviews(12)
 
         setEditUsername(currentUser?.username || '')
         setEditEmail(currentUser?.email || '')
@@ -259,7 +263,7 @@ const ProfilePage: React.FC = () => {
               </div>
             ) : (
               <div className="reviews-container">
-                {myReviews.map((review) => (
+                {myReviews.slice(0, visibleMyReviews).map((review) => (
                   <div key={review.id} className="review-card">
                     <div className="review-header">
                       <div>
@@ -277,6 +281,11 @@ const ProfilePage: React.FC = () => {
                 ))}
               </div>
             )}
+            {visibleMyReviews < myReviews.length ? (
+              <button className="btn-load-more-reviews" onClick={() => setVisibleMyReviews((count) => count + 12)}>
+                Показати ще 12
+              </button>
+            ) : null}
           </div>
         )}
 
@@ -293,7 +302,7 @@ const ProfilePage: React.FC = () => {
               </div>
             ) : (
               <div className="reviews-container">
-                {sellerReviews.map((review) => (
+                {sellerReviews.slice(0, visibleSellerReviews).map((review) => (
                   <div key={review.id} className="review-card">
                     <div className="review-header">
                       <div>
@@ -312,6 +321,11 @@ const ProfilePage: React.FC = () => {
                 ))}
               </div>
             )}
+            {visibleSellerReviews < sellerReviews.length ? (
+              <button className="btn-load-more-reviews" onClick={() => setVisibleSellerReviews((count) => count + 12)}>
+                Показати ще 12
+              </button>
+            ) : null}
           </div>
         )}
       </div>

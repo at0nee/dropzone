@@ -50,8 +50,8 @@ const SellerProfilePage: React.FC = () => {
           setSellerInfo({ id: sellerId, username: 'Unknown Seller', rating: 0, reviews_count: 0, avatar: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22120%22 height=%22120%22%3E%3Ccircle cx=%2260%22 cy=%2260%22 r=%2260%22 fill=%22%23e0e0e0%22/%3E%3Ctext x=%2260%22 y=%2265%22 font-family=%22Arial%22 font-size=%2212%22 fill=%22%23999%22 text-anchor=%22middle%22%3EUser%3C/text%3E%3C/svg%3E' })
         }
 
-        // Always load seller's products
-        const products = await facade.fetchProducts()
+        // Always load seller's products (limit page size to avoid huge fetches)
+        const products = await facade.fetchProducts({ page: 1, pageSize: 200 })
         const sellerProducts = (products || []).filter((p: any) => p.seller_id === sellerId)
         setProducts(sellerProducts.slice(0, 10))
 
@@ -128,8 +128,8 @@ const SellerProfilePage: React.FC = () => {
 
       {/* Header Section */}
       <div className="seller-header">
-        <div className="seller-avatar">
-          <img src={DEFAULT_PROFILE_AVATAR} alt={sellerInfo.username} />
+          <div className="seller-avatar">
+          <img loading="lazy" decoding="async" src={DEFAULT_PROFILE_AVATAR} alt={sellerInfo.username} />
         </div>
         <div className="seller-info-main">
           <h1>{sellerInfo.username}</h1>

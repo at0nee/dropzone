@@ -130,5 +130,5 @@ npm run start
 
 ## Документація по API
 
-Детальний опис бекендового API знаходиться у [backend/README.md](backend/README.md).
+Детальний опис бекендового API знаходиться у [backend/README.md](backend/README.md)
 

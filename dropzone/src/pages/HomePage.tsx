@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowRight, Package, Rocket, ShieldCheck, ShoppingBag, Star, TrendingUp, Users } from 'lucide-react'
 import ProductCard from '../components/ProductCard/ProductCard'
 import { Product } from '../types'
-import facade, { getHomeSummary } from '../services/facade'
+import { getAllReviews, getHomeSummary } from '../services/facade'
 import { getReviewMetricsForSeller, ReviewLike } from '../utils/reviewMetrics'
 import './HomePage.css'
 
@@ -18,76 +18,60 @@ interface SellerLeaderboardItem {
 const HomePage: React.FC = () => {
   const navigate = useNavigate()
   const popularCarouselRef = useRef<HTMLDivElement>(null)
-  const [allProducts, setAllProducts] = useState<Product[]>([])
   const [reviews, setReviews] = useState<ReviewLike[]>([])
   const [popularFromServer, setPopularFromServer] = useState<Product[]>([])
   const [completedPurchasesCount, setCompletedPurchasesCount] = useState(0)
   const [salesCountBySellerSummary, setSalesCountBySellerSummary] = useState<Record<string, number>>({})
   const [sellerNamesById, setSellerNamesById] = useState<Record<string, string>>({})
+  const [productsCount, setProductsCount] = useState(0)
+  const [activeSellersCount, setActiveSellersCount] = useState(0)
+  const [categoriesCount, setCategoriesCount] = useState(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const fetchProducts = async () => {
+    const fetchData = async () => {
       try {
-        const products = await facade.fetchProducts({ page: 1, pageSize: 50 })
-        const savedReviews = await facade.getAllReviews()
+        const savedReviews = await getAllReviews()
         const summary = await getHomeSummary()
 
         setReviews((Array.isArray(savedReviews) ? savedReviews : savedReviews?.data) || [])
-        setAllProducts(((Array.isArray(products) ? products : products?.data) || []).filter((product: any) => Number(product.stock || 0) > 0))
         setCompletedPurchasesCount(summary.completedPurchasesCount || 0)
+        setProductsCount(summary.productsCount || 0)
+        setActiveSellersCount(summary.activeSellersCount || 0)
+        setCategoriesCount(summary.categoriesCount || 0)
         setSalesCountBySellerSummary(summary.salesCountBySeller || {})
         setSellerNamesById(summary.sellerNamesById || {})
         setPopularFromServer((summary.popularProducts || []) as Product[])
       } catch (error) {
         console.error('Failed to fetch products:', error)
         setReviews([])
-        setAllProducts([])
         setPopularFromServer([])
         setCompletedPurchasesCount(0)
         setSalesCountBySellerSummary({})
         setSellerNamesById({})
+        setProductsCount(0)
+        setActiveSellersCount(0)
+        setCategoriesCount(0)
       } finally {
         setLoading(false)
       }
     }
 
-    fetchProducts()
+    fetchData()
   }, [])
 
   const popularProducts = useMemo(() => {
-    if (popularFromServer.length > 0) return popularFromServer
-
-    return [...allProducts]
-      .sort((a, b) => {
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      })
-      .slice(0, 8)
-  }, [allProducts, popularFromServer])
+    return popularFromServer
+  }, [popularFromServer])
 
   const sellerLeaderboards = useMemo(() => {
     const sellerMeta = new Map<string, { username: string; rating: number; reviewsCount: number }>()
     const salesCountBySeller = new Map<string, number>()
     const resolveSellerName = (sellerId: string, fallbackName?: string) => sellerNamesById[sellerId] || fallbackName || sellerId
 
-    // 1. Add sellers from active products
-    allProducts.forEach((product) => {
-      const current = sellerMeta.get(product.seller_id)
-      const nextMeta = {
-        username: resolveSellerName(product.seller_id, product.seller?.username),
-        rating: Number(product.seller?.rating || 0),
-        reviewsCount: Number(product.seller?.reviews_count || 0),
-      }
-
-      if (!current || nextMeta.reviewsCount >= current.reviewsCount) {
-        sellerMeta.set(product.seller_id, nextMeta)
-      }
-    })
-
-    // 2. Add all sellers with sales (even if they have no active products)
+    // Add all sellers with sales
     Object.entries(salesCountBySellerSummary).forEach(([sellerId, sales]) => {
       salesCountBySeller.set(sellerId, Number(sales) || 0)
-      // If seller has sales but no active products, add them to sellerMeta
       if (!sellerMeta.has(sellerId)) {
         sellerMeta.set(sellerId, {
           username: resolveSellerName(sellerId),
@@ -97,7 +81,7 @@ const HomePage: React.FC = () => {
       }
     })
 
-    // 3. Add all sellers with reviews (even if they have no active products)
+    // Add all sellers with reviews
     reviews.forEach((review) => {
       const current = sellerMeta.get(review.seller_id)
       if (!current) {
@@ -131,7 +115,7 @@ const HomePage: React.FC = () => {
     })
 
     const bySales = [...sellers]
-      .filter((s) => s.salesCount > 0 || s.reviewsCount > 0) // Only sellers with sales or reviews
+      .filter((s) => s.salesCount > 0 || s.reviewsCount > 0)
       .sort((a, b) => {
         if (b.salesCount !== a.salesCount) return b.salesCount - a.salesCount
         if (b.rating !== a.rating) return b.rating - a.rating
@@ -149,19 +133,16 @@ const HomePage: React.FC = () => {
       .slice(0, 5)
 
     return { bySales, byReviews }
-  }, [allProducts, salesCountBySellerSummary, reviews, sellerNamesById])
+  }, [salesCountBySellerSummary, reviews, sellerNamesById])
 
   const homepageStats = useMemo(() => {
-    const uniqueSellers = new Set(allProducts.map((product) => product.seller_id)).size
-    const uniqueCategories = new Set(allProducts.map((product) => product.category)).size
-
     return [
-      { label: 'Товарів у каталозі', value: allProducts.length, icon: <Package size={18} /> },
+      { label: 'Товарів у каталозі', value: productsCount, icon: <Package size={18} /> },
       { label: 'Завершених покупок', value: completedPurchasesCount, icon: <ShoppingBag size={18} /> },
-      { label: 'Активних продавців', value: uniqueSellers, icon: <Users size={18} /> },
-      { label: 'Категорій', value: uniqueCategories, icon: <Star size={18} /> },
+      { label: 'Активних продавців', value: activeSellersCount, icon: <Users size={18} /> },
+      { label: 'Категорій', value: categoriesCount, icon: <Star size={18} /> },
     ]
-  }, [allProducts, completedPurchasesCount])
+  }, [productsCount, completedPurchasesCount, activeSellersCount, categoriesCount])
 
   const scrollPopular = (direction: 'left' | 'right') => {
     const container = popularCarouselRef.current

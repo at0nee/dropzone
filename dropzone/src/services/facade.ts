@@ -3,6 +3,9 @@ import * as adminData from '../utils/adminData'
 
 type HomeSummaryPayload = {
   completedPurchasesCount: number
+  productsCount?: number
+  activeSellersCount?: number
+  categoriesCount?: number
   popularProducts: any[]
   salesCountBySeller?: Record<string, number>
   salesCountByProduct?: Record<string, number>
@@ -233,6 +236,9 @@ export const getHomeSummary = async (): Promise<HomeSummaryPayload> => {
     const payload = res.data.data ?? (res.data as any)
     return {
       completedPurchasesCount: Number(payload?.completedPurchasesCount || 0),
+      productsCount: Number(payload?.productsCount || 0),
+      activeSellersCount: Number(payload?.activeSellersCount || 0),
+      categoriesCount: Number(payload?.categoriesCount || 0),
       popularProducts: Array.isArray(payload?.popularProducts) ? payload.popularProducts : [],
       salesCountBySeller: payload?.salesCountBySeller || {},
       salesCountByProduct: payload?.salesCountByProduct || {},
@@ -242,6 +248,9 @@ export const getHomeSummary = async (): Promise<HomeSummaryPayload> => {
     const fallbackProducts = adminData.getStoredProducts() || []
     return {
       completedPurchasesCount: adminData.getStoredOrders().filter((order: any) => order.status === 'completed').length,
+      productsCount: fallbackProducts.length,
+      activeSellersCount: new Set((Array.isArray(fallbackProducts) ? fallbackProducts : []).map((product: any) => product.seller_id)).size,
+      categoriesCount: new Set((Array.isArray(fallbackProducts) ? fallbackProducts : []).map((product: any) => product.category)).size,
       popularProducts: (Array.isArray(fallbackProducts) ? fallbackProducts : []).slice(0, 8),
       salesCountBySeller: {},
       salesCountByProduct: {},

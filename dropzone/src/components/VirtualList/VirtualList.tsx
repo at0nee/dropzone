@@ -24,13 +24,21 @@ const VirtualList: React.FC<VirtualListProps> = ({ height, itemCount, itemSize, 
   const items = [] as React.ReactNode[]
   for (let i = startIndex; i <= endIndex; i++) {
     const style: React.CSSProperties = {
-      position: 'absolute',
-      top: i * itemSize,
       height: itemSize,
       width: '100%',
     }
     items.push(
-      <div key={i} style={style}>
+      <div
+        key={i}
+        style={{
+          position: 'absolute',
+          top: i * itemSize,
+          left: 0,
+          right: 0,
+          height: itemSize,
+          width: '100%',
+        }}
+      >
         {children({ index: i, style })}
       </div>
     )

@@ -245,6 +245,15 @@ const getGlobalHomeSummary = (db: Database) => {
   })
 
   const visibleProducts = (db.products || []).filter((product) => Number(product.stock || 0) > 0)
+  const activeSellerIds = new Set<string>()
+  const sellerNamesByProduct: Record<string, string> = {}
+
+  visibleProducts.forEach((product) => {
+    activeSellerIds.add(product.seller_id)
+    if (product.seller_name) {
+      sellerNamesByProduct[product.seller_id] = product.seller_name
+    }
+  })
 
   const popularProducts = [...visibleProducts]
     .map((product) => ({
@@ -266,10 +275,13 @@ const getGlobalHomeSummary = (db: Database) => {
 
   return {
     completedPurchasesCount: completedOrders.length,
+    productsCount: visibleProducts.length,
+    activeSellersCount: activeSellerIds.size,
+    categoriesCount: new Set(visibleProducts.map((product) => product.category).filter(Boolean)).size,
     popularProducts: popularProducts.length > 0 ? popularProducts : fallbackPopularProducts,
     salesCountByProduct: Object.fromEntries(salesCountByProduct),
     salesCountBySeller: Object.fromEntries(salesCountBySeller),
-    sellerNamesById,
+    sellerNamesById: { ...sellerNamesByProduct, ...sellerNamesById },
   }
 }
 

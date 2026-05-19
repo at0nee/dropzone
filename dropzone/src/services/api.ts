@@ -76,7 +76,7 @@ export const productService = {
   
   // Public popular products (global)
   getPopular: () => api.get<ApiResponse<Product[]>>('/public/popular-products'),
-  getHomeSummary: () => api.get<ApiResponse<{ completedPurchasesCount: number; popularProducts: Product[]; salesCountBySeller?: Record<string, number>; salesCountByProduct?: Record<string, number> }>>('/public/home-summary'),
+  getHomeSummary: () => api.get<ApiResponse<{ completedPurchasesCount: number; productsCount?: number; activeSellersCount?: number; categoriesCount?: number; popularProducts: Product[]; salesCountBySeller?: Record<string, number>; salesCountByProduct?: Record<string, number>; sellerNamesById?: Record<string, string> }>>('/public/home-summary'),
 }
 
 // Cart endpoints

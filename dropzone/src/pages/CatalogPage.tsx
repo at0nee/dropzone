@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
-import VirtualList from '../components/VirtualList/VirtualList'
 import { useSearchParams } from 'react-router-dom'
 import { Filter, Search } from 'lucide-react'
 import ProductCard from '../components/ProductCard/ProductCard'
@@ -162,11 +161,6 @@ const CatalogPage: React.FC = () => {
 
   const visibleProducts = useMemo(() => products.slice(0, visibleCount), [products, visibleCount])
   const hasMoreProducts = visibleCount < products.length
-
-  const listRef = useRef<any>(null)
-  const itemsPerRow = 3
-  const rowCount = Math.max(1, Math.ceil(products.length / itemsPerRow))
-  const rowHeight = 340
 
   const handleShowMore = () => {
     if (loadingMore) return
@@ -360,35 +354,11 @@ const CatalogPage: React.FC = () => {
                     <p>Знайдено {totalProducts !== null ? totalProducts : products.length} товарів, показано {visibleProducts.length}</p>
                   </div>
               <div className="products-grid-virtual">
-                {products.length > 80 ? (
-                  <VirtualList
-                    ref={listRef}
-                    height={Math.min(840, rowCount * rowHeight)}
-                    itemCount={rowCount}
-                    itemSize={rowHeight}
-                    width={'100%'}
-                  >
-                    {({ index, style }) => {
-                      const start = index * itemsPerRow
-                      const rowItems = products.slice(start, start + itemsPerRow)
-                      return (
-                        <div className="product-row" style={style} key={index}>
-                          {rowItems.map((product) => (
-                            <div className="product-cell" key={product.id}>
-                              <ProductCard product={product} />
-                            </div>
-                          ))}
-                        </div>
-                      )
-                    }}
-                  </VirtualList>
-                ) : (
-                  <div className="products-grid">
-                    {visibleProducts.map((product) => (
-                      <ProductCard key={product.id} product={product} />
-                    ))}
-                  </div>
-                )}
+                <div className="products-grid">
+                  {visibleProducts.map((product) => (
+                    <ProductCard key={product.id} product={product} />
+                  ))}
+                </div>
               </div>
               {(hasMoreProducts || (totalProducts !== null && products.length < totalProducts)) && (
                 <div className="catalog-show-more-wrap">

@@ -117,7 +117,6 @@ const AdminPage: React.FC = () => {
   const [batchStatus, setBatchStatus] = useState<any | null>(null)
   const [polling, setPolling] = useState(false)
   const [visibleUsersCount, setVisibleUsersCount] = useState(70)
-  const [visibleProductsCount, setVisibleProductsCount] = useState(70)
   const [adminProductsPage, setAdminProductsPage] = useState(1)
   const [adminProductsPageSize] = useState(200)
   const [adminProductsLoadingMore, setAdminProductsLoadingMore] = useState(false)
@@ -1277,7 +1276,7 @@ const AdminPage: React.FC = () => {
                   visibleProducts.length > 300 ? (
                     <VirtualList
                       height={600}
-                      itemCount={Math.min(visibleProducts.length, visibleProductsCount)}
+                      itemCount={visibleProducts.length}
                       itemSize={88}
                       width={'100%'}
                     >
@@ -1299,7 +1298,7 @@ const AdminPage: React.FC = () => {
                       }}
                     </VirtualList>
                   ) : (
-                    visibleProducts.slice(0, visibleProductsCount).map((p: any, idx: number) => (
+                    visibleProducts.map((p: any, idx: number) => (
                       <div key={p.id || `prod-${idx}`} className="products-table-row">
                         <div className="prod-img"><img src={p.image_url} alt={p.title} /></div>
                         <div className="prod-title"><strong>{p.title}</strong><div className="prod-id">{p.id}</div></div>
@@ -1314,12 +1313,6 @@ const AdminPage: React.FC = () => {
                     ))
                   )
                 )}
-                  {visibleProductsCount < visibleProducts.length ? (
-                    <div style={{ width: '100%', textAlign: 'center', marginTop: 12 }}>
-                      <button className="btn-load-more-reviews" onClick={() => setVisibleProductsCount((c) => c + 70)}>Показати ще 70</button>
-                    </div>
-                  ) : null}
-
                   {(productsTotal !== null && products.length < productsTotal) && (
                     <div style={{ width: '100%', textAlign: 'center', marginTop: 12 }}>
                       <button className="btn-load-more-reviews" onClick={loadMoreAdminProducts} disabled={adminProductsLoadingMore}>

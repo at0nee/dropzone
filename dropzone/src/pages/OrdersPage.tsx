@@ -251,7 +251,6 @@ const OrdersPage: React.FC = () => {
         buyer_id: user.id,
         buyer_name: user.username,
         rating,
-        comment: reviewComment,
         created_at: new Date().toISOString()
       }
 

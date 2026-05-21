@@ -124,7 +124,6 @@ export const createReview = async (productId: string, rating: number, text: stri
       seller_name: product?.seller_name,
       rating,
       text,
-      comment: text,
       created_at: new Date().toISOString(),
     }
     reviews.unshift(newRev)

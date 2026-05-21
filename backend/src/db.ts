@@ -9,7 +9,6 @@ export interface User {
   email: string
   username: string
   name?: string
-  avatar?: string
   role: Role
   balance: number
   rating: number
@@ -38,6 +37,7 @@ export interface Product {
 export interface CatalogCategory {
   id: string
   name: string
+  emoji?: string
   parent_id: string | null
   sort_order: number
   created_at: string
@@ -53,7 +53,6 @@ export interface Review {
   buyer_name: string
   rating: number
   text: string
-  comment?: string
   order_id?: string
   product_title?: string
   created_at: string
@@ -279,20 +278,20 @@ const seedDb = (): Database => {
   ]
 
   const catalogCategories: CatalogCategory[] = [
-    { id: 'games', name: 'Ігри', parent_id: null, sort_order: 1, created_at: createdAt, updated_at: createdAt },
-    { id: 'subscriptions', name: 'Підписки', parent_id: null, sort_order: 2, created_at: createdAt, updated_at: createdAt },
-    { id: 'keys', name: 'Ключі і Коди', parent_id: null, sort_order: 3, created_at: createdAt, updated_at: createdAt },
-    { id: 'cs2', name: 'CS2', parent_id: 'games', sort_order: 1, created_at: createdAt, updated_at: createdAt },
-    { id: 'dota2', name: 'Dota 2', parent_id: 'games', sort_order: 2, created_at: createdAt, updated_at: createdAt },
-    { id: 'valorant', name: 'Valorant', parent_id: 'games', sort_order: 3, created_at: createdAt, updated_at: createdAt },
-    { id: 'pubg', name: 'PUBG', parent_id: 'games', sort_order: 4, created_at: createdAt, updated_at: createdAt },
-    { id: 'fortnite', name: 'Fortnite', parent_id: 'games', sort_order: 5, created_at: createdAt, updated_at: createdAt },
-    { id: 'telegram', name: 'Telegram', parent_id: 'subscriptions', sort_order: 1, created_at: createdAt, updated_at: createdAt },
-    { id: 'spotify', name: 'Spotify', parent_id: 'subscriptions', sort_order: 2, created_at: createdAt, updated_at: createdAt },
-    { id: 'discord', name: 'Discord', parent_id: 'subscriptions', sort_order: 3, created_at: createdAt, updated_at: createdAt },
-    { id: 'youtube', name: 'YouTube', parent_id: 'subscriptions', sort_order: 4, created_at: createdAt, updated_at: createdAt },
-    { id: 'windows', name: 'Windows', parent_id: 'keys', sort_order: 1, created_at: createdAt, updated_at: createdAt },
-    { id: 'office', name: 'Office', parent_id: 'keys', sort_order: 2, created_at: createdAt, updated_at: createdAt },
+    { id: 'games', name: 'Ігри', emoji: 'gamepad-2', parent_id: null, sort_order: 1, created_at: createdAt, updated_at: createdAt },
+    { id: 'subscriptions', name: 'Підписки', emoji: 'smartphone', parent_id: null, sort_order: 2, created_at: createdAt, updated_at: createdAt },
+    { id: 'keys', name: 'Ключі і Коди', emoji: 'key-round', parent_id: null, sort_order: 3, created_at: createdAt, updated_at: createdAt },
+    { id: 'cs2', name: 'CS2', emoji: 'crosshair', parent_id: 'games', sort_order: 1, created_at: createdAt, updated_at: createdAt },
+    { id: 'dota2', name: 'Dota 2', emoji: 'shield', parent_id: 'games', sort_order: 2, created_at: createdAt, updated_at: createdAt },
+    { id: 'valorant', name: 'Valorant', emoji: 'zap', parent_id: 'games', sort_order: 3, created_at: createdAt, updated_at: createdAt },
+    { id: 'pubg', name: 'PUBG', emoji: 'crosshair', parent_id: 'games', sort_order: 4, created_at: createdAt, updated_at: createdAt },
+    { id: 'fortnite', name: 'Fortnite', emoji: 'puzzle', parent_id: 'games', sort_order: 5, created_at: createdAt, updated_at: createdAt },
+    { id: 'telegram', name: 'Telegram', emoji: 'message-circle', parent_id: 'subscriptions', sort_order: 1, created_at: createdAt, updated_at: createdAt },
+    { id: 'spotify', name: 'Spotify', emoji: 'music4', parent_id: 'subscriptions', sort_order: 2, created_at: createdAt, updated_at: createdAt },
+    { id: 'discord', name: 'Discord', emoji: 'message-circle', parent_id: 'subscriptions', sort_order: 3, created_at: createdAt, updated_at: createdAt },
+    { id: 'youtube', name: 'YouTube', emoji: 'play', parent_id: 'subscriptions', sort_order: 4, created_at: createdAt, updated_at: createdAt },
+    { id: 'windows', name: 'Windows', emoji: 'monitor', parent_id: 'keys', sort_order: 1, created_at: createdAt, updated_at: createdAt },
+    { id: 'office', name: 'Office', emoji: 'file-text', parent_id: 'keys', sort_order: 2, created_at: createdAt, updated_at: createdAt },
   ]
 
   const reviews: Review[] = [
@@ -304,7 +303,6 @@ const seedDb = (): Database => {
       buyer_name: buyer.username,
       rating: 5,
       text: 'Все швидко і без проблем, аккаунт відповідає опису.',
-      comment: 'Все швидко і без проблем, аккаунт відповідає опису.',
       product_title: 'CS2 Account - Premium',
       created_at: createdAt,
     },
@@ -316,7 +314,6 @@ const seedDb = (): Database => {
       buyer_name: buyer.username,
       rating: 4,
       text: 'Сервіс активувався миттєво, все ок.',
-      comment: 'Сервіс активувався миттєво, все ок.',
       product_title: 'Telegram Premium 1 Month',
       created_at: createdAt,
     },
@@ -328,7 +325,6 @@ const seedDb = (): Database => {
       buyer_name: buyer.username,
       rating: 5,
       text: 'Ключ прийшов одразу, активація успішна.',
-      comment: 'Ключ прийшов одразу, активація успішна.',
       product_title: 'Windows Key',
       created_at: createdAt,
     },
@@ -357,7 +353,6 @@ const ensureSchema = async () => {
       email VARCHAR(255) NOT NULL,
       username VARCHAR(255) NOT NULL,
       name VARCHAR(255),
-      avatar VARCHAR(1024),
       role VARCHAR(32) NOT NULL DEFAULT 'user',
       balance DOUBLE NOT NULL DEFAULT 0,
       rating DOUBLE NOT NULL DEFAULT 0,
@@ -395,7 +390,6 @@ const ensureSchema = async () => {
       buyer_name VARCHAR(255),
       rating INT NOT NULL DEFAULT 0,
       text TEXT,
-      comment TEXT,
       order_id VARCHAR(64),
       product_title VARCHAR(255),
       created_at DATETIME NOT NULL
@@ -471,12 +465,17 @@ const ensureSchema = async () => {
     CREATE TABLE IF NOT EXISTS ${CATALOG_CATEGORIES_TABLE} (
       id VARCHAR(64) PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
+      emoji VARCHAR(32) NULL,
       parent_id VARCHAR(64) NULL,
       sort_order INT NOT NULL DEFAULT 0,
       created_at DATETIME NOT NULL,
       updated_at DATETIME NOT NULL
     )
   `)
+
+  try {
+    await pool.query(`ALTER TABLE ${CATALOG_CATEGORIES_TABLE} ADD COLUMN emoji VARCHAR(32) NULL AFTER name`)
+  } catch {}
 
   // Create common indexes to improve query performance on large datasets
   // MySQL doesn't support CREATE INDEX IF NOT EXISTS until 8.0.13; wrapping in try to be safe.
@@ -547,7 +546,7 @@ const loadUsers = async (): Promise<User[]> => {
     email: row.email,
     username: row.username,
     name: row.name || row.username,
-    avatar: row.avatar || undefined,
+    // avatar removed: use site default image on frontend instead
     role: row.role,
     balance: Number(row.balance || 0),
     rating: Number(row.rating || 0),
@@ -607,8 +606,7 @@ const loadReviews = async (): Promise<Review[]> => {
     buyer_id: row.buyer_id,
     buyer_name: row.buyer_name,
     rating: Number(row.rating || 0),
-    text: row.text,
-    comment: row.comment || undefined,
+    text: row.text || '',
     order_id: row.order_id || undefined,
     product_title: row.product_title || undefined,
     created_at: mapDate(row.created_at),
@@ -663,6 +661,7 @@ const loadCatalogCategories = async (): Promise<CatalogCategory[]> => {
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
+    emoji: row.emoji || undefined,
     parent_id: row.parent_id || null,
     sort_order: Number(row.sort_order || 0),
     created_at: mapDate(row.created_at),
@@ -681,8 +680,8 @@ const loadSeedIfEmpty = async () => {
     await connection.beginTransaction()
     for (const user of seed.users) {
       await connection.execute(
-        `INSERT INTO ${USERS_TABLE} (id, email, username, name, avatar, role, balance, rating, reviews_count, created_at, updated_at, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [user.id, user.email, user.username, user.name || null, user.avatar || null, user.role, user.balance, user.rating, user.reviews_count, toMysqlDateTime(user.created_at), toMysqlDateTime(user.updated_at), user.passwordHash]
+        `INSERT INTO ${USERS_TABLE} (id, email, username, name, role, balance, rating, reviews_count, created_at, updated_at, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [user.id, user.email, user.username, user.name || null, user.role, user.balance, user.rating, user.reviews_count, toMysqlDateTime(user.created_at), toMysqlDateTime(user.updated_at), user.passwordHash]
       )
     }
 
@@ -713,8 +712,8 @@ const loadSeedCatalogIfMissing = async () => {
     await connection.beginTransaction()
     for (const category of seed.catalog_categories) {
       await connection.execute(
-        `INSERT INTO ${CATALOG_CATEGORIES_TABLE} (id, name, parent_id, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
-        [category.id, category.name, category.parent_id || null, category.sort_order, toMysqlDateTime(category.created_at), toMysqlDateTime(category.updated_at)]
+        `INSERT INTO ${CATALOG_CATEGORIES_TABLE} (id, name, emoji, parent_id, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [category.id, category.name, category.emoji || null, category.parent_id || null, category.sort_order, toMysqlDateTime(category.created_at), toMysqlDateTime(category.updated_at)]
       )
     }
     await connection.commit()
@@ -767,8 +766,8 @@ const loadSeedReviewsIfMissing = async () => {
 
     for (const review of seed.reviews) {
       await connection.execute(
-        `INSERT INTO ${REVIEWS_TABLE} (id, product_id, seller_id, buyer_id, buyer_name, rating, text, comment, order_id, product_title, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [review.id, review.product_id, review.seller_id, review.buyer_id, review.buyer_name, review.rating, review.text, review.comment || null, review.order_id || null, review.product_title || null, toMysqlDateTime(review.created_at)]
+        `INSERT INTO ${REVIEWS_TABLE} (id, product_id, seller_id, buyer_id, buyer_name, rating, text, order_id, product_title, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [review.id, review.product_id, review.seller_id, review.buyer_id, review.buyer_name, review.rating, review.text, review.order_id || null, review.product_title || null, toMysqlDateTime(review.created_at)]
       )
     }
 
@@ -823,16 +822,26 @@ export const saveDb = async (db: Database) => {
     }
 
     // Upsert users
-    const userRows = db.users.map((u) => [u.id, u.email, u.username, u.name || null, u.avatar || null, u.role, u.balance, u.rating, u.reviews_count, toMysqlDateTime(u.created_at), toMysqlDateTime(u.updated_at), u.passwordHash])
-    await batchInsertUpsert(USERS_TABLE, ['id','email','username','name','avatar','role','balance','rating','reviews_count','created_at','updated_at','password_hash'], userRows, ['email','username','name','avatar','role','balance','rating','reviews_count','updated_at','password_hash'])
+    const userRows = db.users.map((u) => [u.id, u.email, u.username, u.name || null, u.role, u.balance, u.rating, u.reviews_count, toMysqlDateTime(u.created_at), toMysqlDateTime(u.updated_at), u.passwordHash])
+    await batchInsertUpsert(USERS_TABLE, ['id','email','username','name','role','balance','rating','reviews_count','created_at','updated_at','password_hash'], userRows, ['email','username','name','role','balance','rating','reviews_count','updated_at','password_hash'])
 
     // Upsert products
     const productRows = db.products.map((p) => [p.id, p.title, p.description, p.price, p.stock, p.category, p.subcategory || null, p.image_url || null, JSON.stringify(p.images || []), p.seller_id, p.seller_name, toMysqlDateTime(p.created_at), toMysqlDateTime(p.updated_at)])
     await batchInsertUpsert(PRODUCTS_TABLE, ['id','title','description','price','stock','category','subcategory','image_url','images','seller_id','seller_name','created_at','updated_at'], productRows, ['title','description','price','stock','category','subcategory','image_url','images','seller_id','seller_name','updated_at'])
+    const productIds = db.products.map((product) => product.id)
+    if (productIds.length === 0) {
+      await connection.query(`DELETE FROM ${PRODUCTS_TABLE}`)
+    } else {
+      const deletePlaceholders = productIds.map(() => '?').join(',')
+      await connection.query(
+        `DELETE FROM ${PRODUCTS_TABLE} WHERE id NOT IN (${deletePlaceholders})`,
+        productIds
+      )
+    }
 
     // Upsert reviews
-    const reviewRows = db.reviews.map((r) => [r.id, r.product_id || null, r.seller_id, r.buyer_id, r.buyer_name, r.rating, r.text, r.comment || null, r.order_id || null, r.product_title || null, toMysqlDateTime(r.created_at)])
-    await batchInsertUpsert(REVIEWS_TABLE, ['id','product_id','seller_id','buyer_id','buyer_name','rating','text','comment','order_id','product_title','created_at'], reviewRows, ['text','rating','comment','product_title'])
+    const reviewRows = db.reviews.map((r) => [r.id, r.product_id || null, r.seller_id, r.buyer_id, r.buyer_name, r.rating, r.text, r.order_id || null, r.product_title || null, toMysqlDateTime(r.created_at)])
+    await batchInsertUpsert(REVIEWS_TABLE, ['id','product_id','seller_id','buyer_id','buyer_name','rating','text','order_id','product_title','created_at'], reviewRows, ['text','rating','product_title'])
 
     // Upsert orders
     const orderRows = db.orders.map((o) => [o.id, o.product_id || null, o.product_name, o.seller_id, o.seller_name, o.buyer_id, o.buyer_name, o.price, o.quantity, o.status, toMysqlDateTime(o.created_at), o.completed_at ? toMysqlDateTime(o.completed_at) : null, o.dispute_resolution || null, o.dispute_resolved_by || null, o.dispute_resolved_at ? toMysqlDateTime(o.dispute_resolved_at) : null])
@@ -862,8 +871,18 @@ export const saveDb = async (db: Database) => {
     }
 
     // Upsert catalog categories (sorted to satisfy parent constraints)
-    const catRows = sortCatalogCategoriesForInsert(db.catalog_categories).map((c) => [c.id, c.name, c.parent_id || null, c.sort_order, toMysqlDateTime(c.created_at), toMysqlDateTime(c.updated_at)])
-    await batchInsertUpsert(CATALOG_CATEGORIES_TABLE, ['id','name','parent_id','sort_order','created_at','updated_at'], catRows, ['name','parent_id','sort_order','updated_at'])
+    const catRows = sortCatalogCategoriesForInsert(db.catalog_categories).map((c) => [c.id, c.name, c.emoji || null, c.parent_id || null, c.sort_order, toMysqlDateTime(c.created_at), toMysqlDateTime(c.updated_at)])
+    await batchInsertUpsert(CATALOG_CATEGORIES_TABLE, ['id','name','emoji','parent_id','sort_order','created_at','updated_at'], catRows, ['name','emoji','parent_id','sort_order','updated_at'])
+    const categoryIds = db.catalog_categories.map((category) => category.id)
+    if (categoryIds.length === 0) {
+      await connection.query(`DELETE FROM ${CATALOG_CATEGORIES_TABLE}`)
+    } else {
+      const deletePlaceholders = categoryIds.map(() => '?').join(',')
+      await connection.query(
+        `DELETE FROM ${CATALOG_CATEGORIES_TABLE} WHERE id NOT IN (${deletePlaceholders})`,
+        categoryIds
+      )
+    }
 
     await connection.commit()
   } catch (error) {
@@ -898,7 +917,6 @@ export const publicUser = (user: User) => ({
   email: user.email,
   username: user.username,
   name: user.name || user.username,
-  avatar: user.avatar,
   role: user.role,
   balance: user.balance,
   rating: user.rating,

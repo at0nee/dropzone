@@ -16,7 +16,7 @@ interface Review {
   buyer_id: string
   buyer_name: string
   rating: number
-  comment: string
+  text: string
   created_at: string
 }
 
@@ -47,7 +47,7 @@ const SellerProfilePage: React.FC = () => {
           setSellerInfo(sellerFromUsers)
         } else {
           // Fallback: create basic seller info if not found
-          setSellerInfo({ id: sellerId, username: 'Unknown Seller', rating: 0, reviews_count: 0, avatar: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22120%22 height=%22120%22%3E%3Ccircle cx=%2260%22 cy=%2260%22 r=%2260%22 fill=%22%23e0e0e0%22/%3E%3Ctext x=%2260%22 y=%2265%22 font-family=%22Arial%22 font-size=%2212%22 fill=%22%23999%22 text-anchor=%22middle%22%3EUser%3C/text%3E%3C/svg%3E' })
+          setSellerInfo({ id: sellerId, username: 'Unknown Seller', rating: 0, reviews_count: 0 })
         }
 
         // Always load seller's products (limit page size to avoid huge fetches)
@@ -210,7 +210,7 @@ const SellerProfilePage: React.FC = () => {
                     {'⭐'.repeat(review.rating)}
                   </div>
                 </div>
-                <p className="review-text">{review.comment}</p>
+                <p className="review-text">{review.text}</p>
                 <span className="review-date">
                   {new Date(review.created_at).toLocaleDateString('uk-UA')}
                 </span>

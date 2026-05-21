@@ -5,7 +5,8 @@ import ProductCard from '../components/ProductCard/ProductCard'
 import { Product, CatalogCategory } from '../types'
 import api, { catalogService, productService } from '../services/api'
 import facade from '../services/facade'
-import { getStoredProducts, getStoredCatalogCategories, saveStoredCatalogCategories } from '../utils/adminData'
+import { getStoredProducts } from '../utils/adminData'
+import { CatalogIconBadge } from '../utils/catalogIcons'
 import './CatalogPage.css'
 
 interface AppItem {
@@ -15,26 +16,6 @@ interface AppItem {
   icon: string
   productTypes: string[]
 }
-
-const DEFAULT_CATEGORIES: CatalogCategory[] = [
-  { id: 'games', name: 'Ігри', parent_id: null, sort_order: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), children: [] },
-  { id: 'subscriptions', name: 'Підписки', parent_id: null, sort_order: 2, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), children: [] },
-  { id: 'keys', name: 'Ключі і Коди', parent_id: null, sort_order: 3, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), children: [] },
-]
-
-const DEFAULT_APPS: AppItem[] = [
-  { id: 'cs2', name: 'CS2', category: 'games', icon: '🎯', productTypes: [] },
-  { id: 'dota2', name: 'Dota 2', category: 'games', icon: '🛡️', productTypes: [] },
-  { id: 'valorant', name: 'Valorant', category: 'games', icon: '⚡', productTypes: [] },
-  { id: 'pubg', name: 'PUBG', category: 'games', icon: '🔫', productTypes: [] },
-  { id: 'fortnite', name: 'Fortnite', category: 'games', icon: '🧱', productTypes: [] },
-  { id: 'telegram', name: 'Telegram', category: 'subscriptions', icon: '✈️', productTypes: [] },
-  { id: 'spotify', name: 'Spotify', category: 'subscriptions', icon: '🎵', productTypes: [] },
-  { id: 'discord', name: 'Discord', category: 'subscriptions', icon: '💬', productTypes: [] },
-  { id: 'youtube', name: 'YouTube', category: 'subscriptions', icon: '▶️', productTypes: [] },
-  { id: 'windows', name: 'Windows', category: 'keys', icon: '🪟', productTypes: [] },
-  { id: 'office', name: 'Office', category: 'keys', icon: '📄', productTypes: [] },
-]
 
 const flattenCatalogCategories = (categories: CatalogCategory[]) => {
   const flat: CatalogCategory[] = []
@@ -48,6 +29,21 @@ const flattenCatalogCategories = (categories: CatalogCategory[]) => {
   return flat
 }
 
+const matchesCatalogFilters = (
+  product: Product,
+  filters: { search: string; category: string; subcategory: string; minPrice: number; maxPrice: number }
+) => {
+  const searchHaystack = [product.title, product.description, product.seller?.username || product.seller_name || ''].join(' ').toLowerCase()
+  const matchesSearch = !filters.search || searchHaystack.includes(filters.search)
+  const matchesCategory = !filters.category || (product.category || '').toLowerCase() === filters.category
+  const matchesSubcategory = !filters.subcategory || (product.subcategory || '').toLowerCase() === filters.subcategory
+  const matchesMinPrice = Number(product.price || 0) >= filters.minPrice
+  const matchesMaxPrice = Number(product.price || 0) <= filters.maxPrice
+  const hasStock = Number(product.stock || 0) > 0
+
+  return matchesSearch && matchesCategory && matchesSubcategory && matchesMinPrice && matchesMaxPrice && hasStock
+}
+
 const CatalogPage: React.FC = () => {
   const [searchParams] = useSearchParams()
   const [products, setProducts] = useState<Product[]>([])
@@ -56,8 +52,8 @@ const CatalogPage: React.FC = () => {
   const [page, setPage] = useState(1)
   const [totalProducts, setTotalProducts] = useState<number | null>(null)
   
-  const [categories, setCategories] = useState<CatalogCategory[]>(DEFAULT_CATEGORIES)
-  const [apps, setApps] = useState<AppItem[]>(DEFAULT_APPS)
+  const [categories, setCategories] = useState<CatalogCategory[]>([])
+  const [apps, setApps] = useState<AppItem[]>([])
   const [filteredApps, setFilteredApps] = useState<AppItem[]>([])
   
   const [selectedCategory, setSelectedCategory] = useState('')
@@ -68,6 +64,8 @@ const CatalogPage: React.FC = () => {
   const [visibleCount, setVisibleCount] = useState(24)
   const pageSize = 24
   const rootCategories = useMemo(() => categories.filter((category) => !category.parent_id), [categories])
+  const activeSubcategory = selectedProductType || selectedApp
+  const normalizedSearch = (searchParams.get('search') || '').trim().toLowerCase()
 
   // Завантажити дані з JSON
   useEffect(() => {
@@ -75,18 +73,14 @@ const CatalogPage: React.FC = () => {
       try {
         const response = await catalogService.getTaxonomy()
         const payload = response.data?.data || response.data
-        const loadedCategories = (payload?.categories && payload.categories.length > 0)
-          ? flattenCatalogCategories(payload.categories)
-          : flattenCatalogCategories(DEFAULT_CATEGORIES)
-        const loadedApps = (payload?.apps && payload.apps.length > 0) ? payload.apps : DEFAULT_APPS
+        const loadedCategories = flattenCatalogCategories(payload?.categories || [])
+        const loadedApps = payload?.apps || []
         setCategories(loadedCategories)
         setApps(loadedApps)
-        saveStoredCatalogCategories(loadedCategories)
       } catch (error) {
         console.error('Failed to load apps data from backend:', error)
-        const stored = getStoredCatalogCategories()
-        setCategories(stored.length > 0 ? stored : flattenCatalogCategories(DEFAULT_CATEGORIES))
-        setApps(DEFAULT_APPS)
+        setCategories([])
+        setApps([])
       }
     }
     loadAppsData()
@@ -121,9 +115,15 @@ const CatalogPage: React.FC = () => {
     const loadPage = async (pageToLoad: number) => {
       try {
         setLoading(true)
-        const searchQuery = (searchParams.get('search') || '').trim().toLowerCase()
-        const params: Record<string, any> = { page: pageToLoad, pageSize, search: searchQuery }
+        const params: Record<string, any> = {
+          page: pageToLoad,
+          pageSize,
+          search: normalizedSearch,
+          minPrice: priceRange[0],
+          maxPrice: priceRange[1],
+        }
         if (selectedCategory) params.category = selectedCategory
+        if (activeSubcategory) params.subcategory = activeSubcategory
         const res = await productService.getAll(params)
         const payload = res.data?.data || res.data || {}
         const items = payload.items || payload || []
@@ -133,7 +133,11 @@ const CatalogPage: React.FC = () => {
         setProducts((current) => {
           const map = new Map<string, typeof items[0]>()
           for (const p of current) map.set(p.id, p)
-          for (const p of (items || [])) map.set(p.id, p)
+          for (const p of (items || [])) {
+            if (matchesCatalogFilters(p, { search: normalizedSearch, category: selectedCategory, subcategory: activeSubcategory, minPrice: priceRange[0], maxPrice: priceRange[1] })) {
+              map.set(p.id, p)
+            }
+          }
           return Array.from(map.values())
         })
         // Prefer server-provided total, otherwise use deduped length
@@ -142,8 +146,9 @@ const CatalogPage: React.FC = () => {
         console.error('Failed to fetch products page:', err)
         // fallback to facade for local data
         const all = (await facade.fetchProducts()) || []
-        setProducts(all.filter((p: any) => Number(p.stock || 0) > 0))
-        setTotalProducts(all.length)
+        const filtered = all.filter((p: any) => matchesCatalogFilters(p, { search: normalizedSearch, category: selectedCategory, subcategory: activeSubcategory, minPrice: priceRange[0], maxPrice: priceRange[1] }))
+        setProducts(filtered)
+        setTotalProducts(filtered.length)
       } finally {
         setLoading(false)
       }
@@ -168,14 +173,26 @@ const CatalogPage: React.FC = () => {
       // need to load next server page
       const nextPage = page + 1
       setLoadingMore(true)
-      productService.getAll({ page: nextPage, pageSize, category: selectedCategory, search: (searchParams.get('search') || '').trim().toLowerCase() })
+      productService.getAll({
+        page: nextPage,
+        pageSize,
+        category: selectedCategory,
+        subcategory: activeSubcategory,
+        search: normalizedSearch,
+        minPrice: priceRange[0],
+        maxPrice: priceRange[1],
+      })
         .then((res) => {
           const payload = res.data?.data || res.data || {}
           const items = payload.items || []
           setProducts((current) => {
             const map = new Map<string, typeof items[0]>()
             for (const p of current) map.set(p.id, p)
-            for (const p of items) map.set(p.id, p)
+            for (const p of items) {
+              if (matchesCatalogFilters(p, { search: normalizedSearch, category: selectedCategory, subcategory: activeSubcategory, minPrice: priceRange[0], maxPrice: priceRange[1] })) {
+                map.set(p.id, p)
+              }
+            }
             return Array.from(map.values())
           })
           setPage(nextPage)
@@ -200,6 +217,10 @@ const CatalogPage: React.FC = () => {
 
   const currentApp = apps.find(app => app.id === selectedApp)
   const productTypes = currentApp?.productTypes || []
+
+  const selectedCategoryExists = categories.some((c) => c.id === selectedCategory)
+  const selectedAppExists = apps.some((a) => a.id === selectedApp)
+  const selectedProductTypeExists = selectedProductType ? productTypes.includes(selectedProductType) : true
 
   const handleCategorySelect = (catId: string) => {
     setSelectedCategory(selectedCategory === catId ? '' : catId)
@@ -243,7 +264,7 @@ const CatalogPage: React.FC = () => {
                   className={`category-btn ${selectedCategory === cat.id ? 'active' : ''}`}
                   onClick={() => handleCategorySelect(cat.id)}
                 >
-                  <span className="cat-icon">{cat.icon}</span>
+                  <CatalogIconBadge value={cat.icon || cat.emoji} className="cat-icon" />
                   <span>{cat.name}</span>
                 </button>
               ))}
@@ -265,19 +286,23 @@ const CatalogPage: React.FC = () => {
                 />
               </div>
               <div className="apps-list">
-                {filteredApps.map((app) => (
-                  <button
-                    key={app.id}
-                    className={`app-btn ${selectedApp === app.id ? 'active' : ''}`}
-                    onClick={() => {
-                      setSelectedApp(selectedApp === app.id ? '' : app.id)
-                      setSelectedProductType('')
-                    }}
-                  >
-                    <span className="app-icon">{app.icon}</span>
-                    <span>{app.name}</span>
-                  </button>
-                ))}
+                {filteredApps.length === 0 ? (
+                  <div className="empty-state compact">{appSearchQuery ? 'Такого застосунку не знайдено' : 'Застосунків немає'}</div>
+                ) : (
+                  filteredApps.map((app) => (
+                    <button
+                      key={app.id}
+                      className={`app-btn ${selectedApp === app.id ? 'active' : ''}`}
+                      onClick={() => {
+                        setSelectedApp(selectedApp === app.id ? '' : app.id)
+                        setSelectedProductType('')
+                      }}
+                    >
+                      <CatalogIconBadge value={app.icon} className="app-icon" />
+                      <span>{app.name}</span>
+                    </button>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -377,11 +402,17 @@ const CatalogPage: React.FC = () => {
             <div className="empty-state">
               <h2>Товари не знайдені</h2>
               <p>
-                {selectedCategory 
-                  ? selectedApp 
-                    ? 'Нема товарів для цього застосунку' 
-                    : 'Виберіть застосунок'
-                  : 'Виберіть категорію для початку'}
+                { !selectedCategoryExists ? (
+                    'Обрана категорія не знайдена'
+                  ) : !selectedAppExists && selectedApp ? (
+                    'Обраний застосунок не знайдено'
+                  ) : selectedApp && !selectedProductTypeExists ? (
+                    'Обрана підкатегорія не знайдена'
+                  ) : selectedCategory ? (
+                    selectedApp ? 'Нема товарів для цього застосунку' : 'Виберіть застосунок'
+                  ) : (
+                    'Виберіть категорію для початку'
+                  )}
               </p>
             </div>
           )}

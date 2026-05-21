@@ -87,11 +87,10 @@ const LoginPage: React.FC = () => {
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => { setEmail(e.target.value); setEmailError(null); setLocalError(null); clearError(); }}
               required
               disabled={isLoading}
             />
-            {emailError && <div className="field-error">{emailError}</div>}
           </div>
 
           <div className="form-group">

@@ -3,7 +3,6 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(255) NOT NULL UNIQUE,
   username VARCHAR(255) NOT NULL,
   name VARCHAR(255) NULL,
-  avatar VARCHAR(512) NULL,
   role ENUM('user','admin','support') NOT NULL DEFAULT 'user',
   balance DECIMAL(14,2) NOT NULL DEFAULT 0,
   rating DECIMAL(4,2) NOT NULL DEFAULT 0,
@@ -59,7 +58,6 @@ CREATE TABLE IF NOT EXISTS reviews (
   buyer_name VARCHAR(255) NOT NULL,
   rating INT NOT NULL,
   text TEXT NOT NULL,
-  comment TEXT NULL,
   order_id VARCHAR(64) NULL,
   product_title VARCHAR(255) NULL,
   created_at DATETIME NOT NULL,
@@ -116,6 +114,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE TABLE IF NOT EXISTS catalog_categories (
   id VARCHAR(64) PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
+  emoji VARCHAR(32) NULL,
   parent_id VARCHAR(64) NULL,
   sort_order INT NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL,

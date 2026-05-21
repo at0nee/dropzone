@@ -34,7 +34,6 @@ const normalizeUserRecord = (user: Partial<User> & { id: string }): User => ({
   id: user.id,
   username: user.username || 'Unknown User',
   email: user.email || 'unknown@example.com',
-  avatar: user.avatar,
   role: user.role || 'user',
   balance: Number(user.balance ?? 0),
   rating: Number(user.rating ?? 0),

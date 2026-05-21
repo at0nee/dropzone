@@ -4,7 +4,6 @@ export interface User {
   id: string
   username: string
   email: string
-  avatar?: string
   role?: UserRole
   balance: number
   rating: number
@@ -35,6 +34,7 @@ export interface CatalogCategory {
   parent_id: string | null
   sort_order?: number
   icon?: string
+  emoji?: string
   created_at: string
   updated_at: string
   children?: CatalogCategory[]
@@ -52,7 +52,7 @@ export interface Review {
   user_id: string
   user: User
   rating: number
-  text: string
+  text: string | null
   created_at: string
 }
 

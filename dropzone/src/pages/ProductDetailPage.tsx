@@ -273,7 +273,7 @@ const ReviewsSection: React.FC<ReviewsSectionProps> = ({ sellerId, productId }) 
                     Товар: <span className="product-title-ref">{review.product_title}</span>
                   </div>
                 ) : null}
-                <p className="review-comment">{review.comment}</p>
+                <p className="review-comment">{review.text}</p>
               </div>
             ))
           )}

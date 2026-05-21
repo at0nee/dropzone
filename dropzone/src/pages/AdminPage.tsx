@@ -4,9 +4,10 @@ import { ArrowLeft, CheckCircle2, MessageCircle, Shield, Users, AlertTriangle, R
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { User, UserRole, CatalogCategory } from '../types'
-import { appendChatMessageToSellerThread, findStoredUserById, getStoredChats, getStoredOrders, getStoredUsers, resolveDispute, updateStoredUserRole, getStoredProducts, saveStoredProducts, getAdminLogs, appendAdminLog, clearAdminLogs, getStoredCatalogCategories, saveStoredCatalogCategories } from '../utils/adminData'
+import { appendChatMessageToSellerThread, findStoredUserById, getStoredChats, getStoredOrders, getStoredUsers, resolveDispute, updateStoredUserRole, getStoredProducts, saveStoredProducts, getAdminLogs, appendAdminLog, clearAdminLogs } from '../utils/adminData'
 import api, { catalogService } from '../services/api'
 import CustomSelect from '../components/CustomSelect/CustomSelect'
+import { CATEGORY_ICON_FALLBACK, CATEGORY_ICON_OPTIONS, CatalogIconBadge, getCatalogIconOption } from '../utils/catalogIcons'
 import { useToast } from '../components/Toast'
 import './AdminPage.css'
 
@@ -101,6 +102,7 @@ const AdminPage: React.FC = () => {
   const [editingBalance, setEditingBalance] = useState<Record<string, number>>({})
   const [openRoleMenu, setOpenRoleMenu] = useState<string | null>(null)
   const [categoryName, setCategoryName] = useState('')
+  const [categoryIcon, setCategoryIcon] = useState(CATEGORY_ICON_FALLBACK)
   const [categoryParentId, setCategoryParentId] = useState('')
   const [categorySortOrder, setCategorySortOrder] = useState(0)
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
@@ -159,7 +161,7 @@ const AdminPage: React.FC = () => {
         setChats([])
         setChatCount(0)
         setProducts(getStoredProducts())
-        setCatalogCategories(getStoredCatalogCategories())
+        setCatalogCategories([])
         setDebugLogs(storedLogs)
 
         const firstDispute = nextDisputes.find((order: any) => order.status === 'disputed')
@@ -208,7 +210,6 @@ const AdminPage: React.FC = () => {
       setProductsTotal(nextProductsTotal)
       setAdminProductsPage(1)
       setCatalogCategories(nextCatalog)
-      saveStoredCatalogCategories(nextCatalog)
       setDebugLogs(storedLogs)
 
       const firstDispute = nextOrders.find((order: any) => order.status === 'disputed')
@@ -219,7 +220,6 @@ const AdminPage: React.FC = () => {
       const storedOrders = getStoredOrders()
       const storedChats = getStoredChats()
       const storedProducts = getStoredProducts()
-      const storedCatalog = getStoredCatalogCategories()
 
       setUsers(storedUsers)
       setOrders(storedOrders)
@@ -227,10 +227,7 @@ const AdminPage: React.FC = () => {
       setChatCount(storedChats.length)
       setProducts(storedProducts)
       setProductsTotal(storedProducts.length)
-      setCatalogCategories(storedCatalog)
-      if (storedCatalog.length === 0) {
-        saveStoredCatalogCategories([])
-      }
+      setCatalogCategories([])
       setDebugLogs(storedLogs)
 
       const firstDispute = storedOrders.find((order) => order.status === 'disputed')
@@ -418,6 +415,7 @@ const AdminPage: React.FC = () => {
   const rootCategories = useMemo(() => catalogCategories.filter((category) => !category.parent_id), [catalogCategories])
   const resetCategoryForm = () => {
     setCategoryName('')
+    setCategoryIcon(CATEGORY_ICON_FALLBACK)
     setCategoryParentId('')
     setCategorySortOrder(0)
     setEditingCategoryId(null)
@@ -426,6 +424,7 @@ const AdminPage: React.FC = () => {
   const handleEditCategory = (category: CatalogCategory) => {
     setEditingCategoryId(category.id)
     setCategoryName(category.name)
+    setCategoryIcon(getCatalogIconOption(category.emoji || category.icon)?.value || CATEGORY_ICON_FALLBACK)
     setCategoryParentId(category.parent_id || '')
     setCategorySortOrder(Number(category.sort_order || 0))
   }
@@ -440,6 +439,7 @@ const AdminPage: React.FC = () => {
       try {
         const payload = {
           name: categoryName.trim(),
+          emoji: categoryIcon,
           parent_id: categoryParentId || null,
           sort_order: categorySortOrder,
         }
@@ -456,36 +456,10 @@ const AdminPage: React.FC = () => {
           return
         }
       } catch (error) {
-        console.error('Failed to save category via backend, using local fallback:', error)
+        console.error('Failed to save category via backend:', error)
+        showToast('❌ Не вдалося зберегти категорію', 'error')
+        return
       }
-
-      const fallback = getStoredCatalogCategories()
-      const now = new Date().toISOString()
-      if (editingCategoryId) {
-        const index = fallback.findIndex((item) => item.id === editingCategoryId)
-        if (index !== -1) {
-          fallback[index] = {
-            ...fallback[index],
-            name: categoryName.trim(),
-            parent_id: categoryParentId || null,
-            sort_order: categorySortOrder,
-            updated_at: now,
-          }
-        }
-      } else {
-        fallback.unshift({
-          id: `cat-${Date.now()}`,
-          name: categoryName.trim(),
-          parent_id: categoryParentId || null,
-          sort_order: categorySortOrder,
-          created_at: now,
-          updated_at: now,
-        })
-      }
-      saveStoredCatalogCategories(fallback)
-      setCatalogCategories(fallback)
-      resetCategoryForm()
-      showToast(editingCategoryId ? '✅ Категорію оновлено' : '✅ Категорію додано', 'success')
     })()
   }
 
@@ -498,21 +472,10 @@ const AdminPage: React.FC = () => {
         showToast('✅ Категорію видалено', 'success')
         return
       } catch (error) {
-        console.error('Failed to delete category via backend, using local fallback:', error)
+        console.error('Failed to delete category via backend:', error)
+        showToast('❌ Не вдалося видалити категорію', 'error')
+        return
       }
-
-      const fallback = getStoredCatalogCategories()
-      const idsToDelete = new Set<string>()
-      const collect = (id: string) => {
-        idsToDelete.add(id)
-        fallback.filter((item) => item.parent_id === id).forEach((child) => collect(child.id))
-      }
-      collect(categoryId)
-      const next = fallback.filter((item) => !idsToDelete.has(item.id))
-      saveStoredCatalogCategories(next)
-      setCatalogCategories(next)
-      if (editingCategoryId === categoryId) resetCategoryForm()
-      showToast('✅ Категорію видалено', 'success')
     })()
   }
 
@@ -520,8 +483,8 @@ const AdminPage: React.FC = () => {
     void (async () => {
       try {
         await api.delete(`/products/${productId}`)
-        const updated = products.filter((p: any) => p.id !== productId)
-        setProducts(updated)
+        setProducts((current) => current.filter((p: any) => p.id !== productId))
+        setProductsTotal((current) => (current === null ? current : Math.max(current - 1, 0)))
         setProductToDelete(null)
         showToast('✅ Товар видалено', 'success')
         return
@@ -532,6 +495,7 @@ const AdminPage: React.FC = () => {
       const updated = products.filter((p: any) => p.id !== productId)
       saveStoredProducts(updated)
       setProducts(updated)
+      setProductsTotal((current) => (current === null ? current : Math.max(current - 1, 0)))
       setProductToDelete(null)
       showToast('✅ Товар видалено', 'success')
     })()
@@ -1346,6 +1310,7 @@ const AdminPage: React.FC = () => {
                     <div key={category.id} className="catalog-node">
                       <div className="catalog-node-head">
                         <div>
+                          <CatalogIconBadge value={category.emoji || category.icon} className="catalog-node-emoji" />
                           <strong>{category.name}</strong>
                           <p>{category.id}</p>
                         </div>
@@ -1361,6 +1326,7 @@ const AdminPage: React.FC = () => {
                           catalogCategories.filter((item) => item.parent_id === category.id).map((child) => (
                             <div key={child.id} className="catalog-child-row">
                               <div>
+                                <CatalogIconBadge value={child.emoji || child.icon} className="catalog-node-emoji" />
                                 <strong>{child.name}</strong>
                                 <p>{child.id}</p>
                               </div>
@@ -1388,6 +1354,23 @@ const AdminPage: React.FC = () => {
                     placeholder="Наприклад: Steam"
                   />
                 </label>
+                <div className="emoji-picker-field">
+                  <span className="emoji-picker-label">Іконка категорії</span>
+                  <div className="emoji-picker-grid" role="radiogroup" aria-label="Вибір іконки для категорії">
+                    {CATEGORY_ICON_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`emoji-picker-option ${categoryIcon === option.value ? 'active' : ''}`}
+                        aria-pressed={categoryIcon === option.value}
+                        onClick={() => setCategoryIcon(option.value)}
+                        title={option.label}
+                      >
+                        <option.Icon size={18} strokeWidth={2.25} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <label>
                   Батьківська категорія
                   <CustomSelect
@@ -1397,7 +1380,7 @@ const AdminPage: React.FC = () => {
                     onChange={setCategoryParentId}
                     options={[
                       { value: '', label: 'Без батьківської (верхній рівень)' },
-                      ...catalogCategories
+                      ...rootCategories
                         .slice()
                         .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
                         .map((category) => ({

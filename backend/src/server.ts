@@ -44,6 +44,9 @@ const makeProductsCacheKey = (params: Record<string, any>) => {
   const keyObj = {
     search: params.search || '',
     category: params.category || '',
+    subcategory: params.subcategory || '',
+    minPrice: params.minPrice !== undefined ? String(params.minPrice) : '',
+    maxPrice: params.maxPrice !== undefined ? String(params.maxPrice) : '',
     page: Number(params.page || 1),
     pageSize: Number(params.pageSize || 12),
     includeOutOfStock: params.includeOutOfStock ? '1' : '0',
@@ -277,7 +280,7 @@ const getGlobalHomeSummary = (db: Database) => {
     completedPurchasesCount: completedOrders.length,
     productsCount: visibleProducts.length,
     activeSellersCount: activeSellerIds.size,
-    categoriesCount: new Set(visibleProducts.map((product) => product.category).filter(Boolean)).size,
+    categoriesCount: db.catalog_categories.filter((category) => Boolean(category.parent_id)).length,
     popularProducts: popularProducts.length > 0 ? popularProducts : fallbackPopularProducts,
     salesCountByProduct: Object.fromEntries(salesCountByProduct),
     salesCountBySeller: Object.fromEntries(salesCountBySeller),
@@ -411,7 +414,6 @@ const generateReviews = (db: Database, batchId: string, count: number) => {
       buyer_name: buyer.username,
       rating: Math.floor(Math.random() * 5) + 1,
       text,
-      comment: text,
       product_title: product.title,
       created_at: nowIso,
     }
@@ -445,6 +447,21 @@ const resolveCatalogParentId = (db: Database, rawParentId: unknown) => {
   return value
 }
 
+const resolveCatalogCategoryId = (db: Database, rawValue: unknown) => {
+  const value = normalizeCatalogName(rawValue)
+  if (!value) return null
+  const byId = db.catalog_categories.find((category) => category.id === value)
+  if (byId) return byId.id
+  const byName = db.catalog_categories.find((category) => category.name.toLowerCase() === value.toLowerCase())
+  if (byName) return byName.id
+  return null
+}
+
+const isRootCatalogCategory = (db: Database, categoryId: string) => {
+  const category = db.catalog_categories.find((item) => item.id === categoryId)
+  return Boolean(category && !category.parent_id)
+}
+
 const wouldCreateCatalogCycle = (db: Database, categoryId: string, parentId: string | null) => {
   if (!parentId) return false
   let current = db.catalog_categories.find((category) => category.id === parentId) || null
@@ -472,48 +489,32 @@ const createCatalogCategoryId = (name: string) => `${slugifyCatalogName(name)}-$
 
 const buildCatalogApiPayload = (categories: CatalogCategory[]) => {
   const tree = buildCatalogTree(categories)
-  const iconById: Record<string, string> = {
-    games: '🎮',
-    subscriptions: '📱',
-    keys: '🔑',
-    cs2: '🎯',
-    dota2: '🛡️',
-    valorant: '⚡',
-    pubg: '🔫',
-    fortnite: '🧱',
-    telegram: '✈️',
-    spotify: '🎵',
-    discord: '💬',
-    youtube: '▶️',
-    windows: '🪟',
-    office: '📄',
-  }
-  const iconFor = (id: string, fallback = '📦') => iconById[id] || fallback
-
   return {
     categories: tree.map((category) => ({
       id: category.id,
       name: category.name,
+      emoji: category.emoji,
       parent_id: category.parent_id,
       sort_order: category.sort_order,
       created_at: category.created_at,
       updated_at: category.updated_at,
-      icon: iconFor(category.id, '🗂️'),
+      icon: category.emoji || 'gamepad-2',
       children: category.children.map((child) => ({
         id: child.id,
         name: child.name,
+        emoji: child.emoji,
         parent_id: child.parent_id,
         sort_order: child.sort_order,
         created_at: child.created_at,
         updated_at: child.updated_at,
-        icon: iconFor(child.id),
+        icon: child.emoji || 'gamepad-2',
       })),
     })),
     apps: tree.flatMap((category) => category.children.map((child) => ({
       id: child.id,
       name: child.name,
       category: category.id,
-      icon: '📦',
+      icon: child.emoji || 'gamepad-2',
       productTypes: [],
     }))),
   }
@@ -683,13 +684,18 @@ app.get('/products', asyncHandler(async (req, res) => {
   const db = await ensureDb()
   const search = normalizeText(req.query.search).toLowerCase()
   const category = normalizeText(req.query.category).toLowerCase()
+  const subcategory = normalizeText(req.query.subcategory).toLowerCase()
+  const minPriceRaw = normalizeText(req.query.minPrice)
+  const maxPriceRaw = normalizeText(req.query.maxPrice)
+  const minPrice = minPriceRaw !== '' ? Number(minPriceRaw) : null
+  const maxPrice = maxPriceRaw !== '' ? Number(maxPriceRaw) : null
   const page = Math.max(1, asNumber(req.query.page, 1))
   // Allow very large page sizes for admin uses (practically unlimited, capped at 1M)
   const pageSize = Math.min(1000000, Math.max(1, asNumber(req.query.pageSize, 12)))
   const includeOutOfStock = String(req.query.includeOutOfStock || '').toLowerCase() === 'true' || String(req.query.includeOutOfStock || '') === '1'
 
   // Try products cache
-  const cacheKey = makeProductsCacheKey({ search, category, page, pageSize, includeOutOfStock })
+  const cacheKey = makeProductsCacheKey({ search, category, subcategory, minPrice: minPriceRaw, maxPrice: maxPriceRaw, page, pageSize, includeOutOfStock })
   const cached = productsCache.get(cacheKey)
   if (cached && cached.expires > Date.now()) {
     return send(res, cached.payload)
@@ -698,9 +704,12 @@ app.get('/products', asyncHandler(async (req, res) => {
   const items = db.products
     .filter((product) => {
       const matchesSearch = !search || [product.title, product.description, product.seller_name].join(' ').toLowerCase().includes(search)
-      const matchesCategory = !category || product.category.toLowerCase() === category || (product.subcategory || '').toLowerCase() === category
+      const matchesCategory = !category || product.category.toLowerCase() === category
+      const matchesSubcategory = !subcategory || (product.subcategory || '').toLowerCase() === subcategory
+      const matchesMinPrice = minPrice === null || Number(product.price || 0) >= minPrice
+      const matchesMaxPrice = maxPrice === null || Number(product.price || 0) <= maxPrice
       const hasStock = includeOutOfStock ? true : ((product.stock || 0) > 0)
-      return matchesSearch && matchesCategory && hasStock
+      return matchesSearch && matchesCategory && matchesSubcategory && matchesMinPrice && matchesMaxPrice && hasStock
     })
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
@@ -758,6 +767,9 @@ app.post('/admin/catalog/categories', asyncHandler(async (req, res) => {
   if (parentId && !db.catalog_categories.some((category) => category.id === parentId)) {
     return fail(res, 404, 'Parent category not found')
   }
+  if (parentId && !isRootCatalogCategory(db, parentId)) {
+    return fail(res, 400, 'Subcategories of subcategories are not allowed')
+  }
 
   const duplicate = db.catalog_categories.some((category) =>
     category.parent_id === parentId && category.name.toLowerCase() === name.toLowerCase()
@@ -767,6 +779,7 @@ app.post('/admin/catalog/categories', asyncHandler(async (req, res) => {
   const category: CatalogCategory = {
     id: createCatalogCategoryId(name),
     name,
+    emoji: normalizeText(req.body?.emoji) || 'gamepad-2',
     parent_id: parentId,
     sort_order: sortOrder,
     created_at: new Date().toISOString(),
@@ -787,6 +800,7 @@ app.put('/admin/catalog/categories/:id', asyncHandler(async (req, res) => {
   if (!category) return fail(res, 404, 'Category not found')
 
   const name = normalizeCatalogName(req.body?.name)
+  const emoji = normalizeText(req.body?.emoji) || category.emoji || 'gamepad-2'
   const rawParentId = req.body?.parent_id === null ? null : req.body?.parent_id
   const parentId = rawParentId === null ? null : resolveCatalogParentId(db, rawParentId) || category.parent_id
   const sortOrder = typeof req.body?.sort_order !== 'undefined' ? Math.max(0, asNumber(req.body?.sort_order, category.sort_order)) : category.sort_order
@@ -795,6 +809,9 @@ app.put('/admin/catalog/categories/:id', asyncHandler(async (req, res) => {
   if (parentId === category.id) return fail(res, 400, 'Category cannot be its own parent')
   if (parentId && !db.catalog_categories.some((item) => item.id === parentId)) {
     return fail(res, 404, 'Parent category not found')
+  }
+  if (parentId && !isRootCatalogCategory(db, parentId)) {
+    return fail(res, 400, 'Subcategories of subcategories are not allowed')
   }
   if (wouldCreateCatalogCycle(db, category.id, parentId)) {
     return fail(res, 400, 'Category hierarchy cycle detected')
@@ -806,6 +823,7 @@ app.put('/admin/catalog/categories/:id', asyncHandler(async (req, res) => {
   if (duplicate) return fail(res, 409, 'Category already exists')
 
   category.name = name
+  category.emoji = emoji
   category.parent_id = parentId
   category.sort_order = sortOrder
   category.updated_at = new Date().toISOString()
@@ -853,10 +871,24 @@ app.post('/products', asyncHandler(async (req, res) => {
   const description = normalizeText(payload.description)
   const price = asNumber(payload.price)
   const stock = asNumber(payload.stock ?? payload.quantity, 1)
-  const category = normalizeText(payload.category || 'games')
-  const subcategory = normalizeText(payload.subcategory)
+  const categoryId = resolveCatalogCategoryId(db, payload.category)
+  const subcategoryId = resolveCatalogCategoryId(db, payload.subcategory)
   if (!title || !description || !price) {
     return fail(res, 400, 'Validation error', ['title, description, price are required'])
+  }
+  if (!categoryId) {
+    return fail(res, 400, 'Validation error', ['category is required'])
+  }
+  if (!subcategoryId) {
+    return fail(res, 400, 'Validation error', ['subcategory is required'])
+  }
+  const categoryNode = db.catalog_categories.find((item) => item.id === categoryId)
+  const subcategoryNode = db.catalog_categories.find((item) => item.id === subcategoryId)
+  if (!categoryNode || categoryNode.parent_id) {
+    return fail(res, 400, 'Validation error', ['category must be a root category'])
+  }
+  if (!subcategoryNode || subcategoryNode.parent_id !== categoryId) {
+    return fail(res, 400, 'Validation error', ['subcategory must belong to the selected category'])
   }
 
   if (title.length > PRODUCT_TITLE_MAX) return fail(res, 400, 'Validation error', [`title must be at most ${PRODUCT_TITLE_MAX} characters`])
@@ -868,8 +900,8 @@ app.post('/products', asyncHandler(async (req, res) => {
     description,
     price,
     stock,
-    category,
-    subcategory: subcategory || undefined,
+    category: categoryId,
+    subcategory: subcategoryId,
     image_url: normalizeText(payload.image_url) || undefined,
     images: Array.isArray(payload.images) ? payload.images.filter(Boolean) : [],
     seller_id: user.id,
@@ -902,13 +934,25 @@ app.put('/products/:id', asyncHandler(async (req, res) => {
   const newDescription = typeof payload.description === 'string' ? normalizeText(payload.description) : product.description
   if (typeof payload.title === 'string' && newTitle.length > PRODUCT_TITLE_MAX) return fail(res, 400, 'Validation error', [`title must be at most ${PRODUCT_TITLE_MAX} characters`])
   if (typeof payload.description === 'string' && newDescription.length > PRODUCT_DESCRIPTION_MAX) return fail(res, 400, 'Validation error', [`description must be at most ${PRODUCT_DESCRIPTION_MAX} characters`])
+  const categoryId = resolveCatalogCategoryId(db, payload.category ?? product.category)
+  const subcategoryId = resolveCatalogCategoryId(db, payload.subcategory ?? product.subcategory)
+  if (!categoryId) return fail(res, 400, 'Validation error', ['category is required'])
+  if (!subcategoryId) return fail(res, 400, 'Validation error', ['subcategory is required'])
+  const categoryNode = db.catalog_categories.find((item) => item.id === categoryId)
+  const subcategoryNode = db.catalog_categories.find((item) => item.id === subcategoryId)
+  if (!categoryNode || categoryNode.parent_id) {
+    return fail(res, 400, 'Validation error', ['category must be a root category'])
+  }
+  if (!subcategoryNode || subcategoryNode.parent_id !== categoryId) {
+    return fail(res, 400, 'Validation error', ['subcategory must belong to the selected category'])
+  }
 
   product.title = newTitle
   product.description = newDescription
   product.price = asNumber(payload.price ?? product.price)
   product.stock = asNumber(payload.stock ?? payload.quantity ?? product.stock)
-  product.category = normalizeText(payload.category ?? product.category)
-  product.subcategory = normalizeText((payload.subcategory ?? product.subcategory) || '') || undefined
+  product.category = categoryId
+  product.subcategory = subcategoryId
   product.image_url = normalizeText((payload.image_url ?? product.image_url) || '') || undefined
   product.images = Array.isArray(payload.images) ? payload.images.filter(Boolean) : product.images
   product.updated_at = new Date().toISOString()
@@ -989,7 +1033,7 @@ app.post('/reviews', asyncHandler(async (req, res) => {
 
   const productId = normalizeText(req.body?.product_id)
   const rating = Math.max(1, Math.min(5, asNumber(req.body?.rating, 5)))
-  const text = normalizeText(req.body?.text || req.body?.comment)
+  const text = normalizeText(req.body?.text)
   const orderId = normalizeText(req.body?.order_id)
   
   if (text.length > REVIEW_COMMENT_MAX) return fail(res, 400, 'Validation error', [`review comment must be at most ${REVIEW_COMMENT_MAX} characters`])
@@ -1009,7 +1053,6 @@ app.post('/reviews', asyncHandler(async (req, res) => {
     buyer_name: user.username,
     rating,
     text,
-    comment: text,
     order_id: orderId || undefined,
     product_title: product.title,
     created_at: new Date().toISOString(),
@@ -1062,7 +1105,6 @@ app.put('/users/:id', asyncHandler(async (req, res) => {
     target.username = payload.username
   }
   if (typeof payload.name === 'string') target.name = payload.name
-  if (typeof payload.avatar === 'string') target.avatar = payload.avatar
   if (typeof payload.email === 'string') target.email = payload.email
   if (typeof payload.balance !== 'undefined') target.balance = asNumber(payload.balance, target.balance)
   if (current.role === 'admin' && typeof payload.role === 'string') target.role = payload.role as Role

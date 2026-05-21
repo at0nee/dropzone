@@ -7,7 +7,6 @@ import CustomSelect from '../components/CustomSelect/CustomSelect'
 import facade from '../services/facade'
 import { catalogService } from '../services/api'
 import { CatalogCategory } from '../types'
-import { getStoredCatalogCategories, saveStoredCatalogCategories } from '../utils/adminData'
 import './CreateProductPage.css'
 
 interface ProductFormData {
@@ -19,23 +18,6 @@ interface ProductFormData {
   stock: number
   image_url: string
 }
-
-const DEFAULT_CATALOG_CATEGORIES: CatalogCategory[] = [
-  { id: 'games', name: 'Ігри', parent_id: null, sort_order: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: 'subscriptions', name: 'Підписки', parent_id: null, sort_order: 2, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: 'keys', name: 'Ключі і Коди', parent_id: null, sort_order: 3, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: 'cs2', name: 'CS2', parent_id: 'games', sort_order: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: 'dota2', name: 'Dota 2', parent_id: 'games', sort_order: 2, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: 'valorant', name: 'Valorant', parent_id: 'games', sort_order: 3, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: 'pubg', name: 'PUBG', parent_id: 'games', sort_order: 4, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: 'fortnite', name: 'Fortnite', parent_id: 'games', sort_order: 5, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: 'telegram', name: 'Telegram', parent_id: 'subscriptions', sort_order: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: 'spotify', name: 'Spotify', parent_id: 'subscriptions', sort_order: 2, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: 'discord', name: 'Discord', parent_id: 'subscriptions', sort_order: 3, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: 'youtube', name: 'YouTube', parent_id: 'subscriptions', sort_order: 4, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: 'windows', name: 'Windows', parent_id: 'keys', sort_order: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: 'office', name: 'Office', parent_id: 'keys', sort_order: 2, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-]
 
 const resolveCategoryId = (categories: CatalogCategory[], value: string) => {
   const normalized = value.trim().toLowerCase()
@@ -66,7 +48,7 @@ const CreateProductPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [isEditMode, setIsEditMode] = useState(!!productId)
   const [originalProduct, setOriginalProduct] = useState<any>(null)
-  const [catalogCategories, setCatalogCategories] = useState<CatalogCategory[]>(DEFAULT_CATALOG_CATEGORIES)
+  const [catalogCategories, setCatalogCategories] = useState<CatalogCategory[]>([])
   const TITLE_MAX = 56
   const DESCRIPTION_MAX = 512
 
@@ -96,41 +78,25 @@ const CreateProductPage: React.FC = () => {
         const response = await catalogService.getTaxonomy()
         const payload = response.data?.data
         const loaded = flattenCatalogCategories(payload?.categories || [])
-        if (loaded.length > 0) {
-          setCatalogCategories(loaded)
-          saveStoredCatalogCategories(loaded)
-          setFormData((current) => ({
-            ...current,
-            category: current.category || loaded.find((category) => !category.parent_id)?.id || '',
-          }))
-          return
-        }
+        setCatalogCategories(loaded)
+        setFormData((current) => ({
+          ...current,
+          category: current.category || loaded.find((category) => !category.parent_id)?.id || '',
+        }))
+        return loaded
       } catch (error) {
-        console.error('Failed to load catalog taxonomy from backend, using local fallback:', error)
-      }
-
-      const stored = getStoredCatalogCategories()
-      if (stored.length > 0) {
-        setCatalogCategories(stored)
-        setFormData((current) => ({
-          ...current,
-          category: current.category || stored.find((category) => !category.parent_id)?.id || '',
-        }))
-      } else {
-        setCatalogCategories(DEFAULT_CATALOG_CATEGORIES)
-        setFormData((current) => ({
-          ...current,
-          category: current.category || DEFAULT_CATALOG_CATEGORIES.find((category) => !category.parent_id)?.id || '',
-        }))
+        console.error('Failed to load catalog taxonomy from backend:', error)
+        setCatalogCategories([])
+        return []
       }
     }
 
-    void loadCategories()
+    const categoriesPromise = loadCategories()
 
     // Якщо редагування, завантажити товар
     if (isEditMode && productId) {
       ;(async () => {
-        const product = await facade.fetchProductById(productId)
+        const [loadedCategories, product] = await Promise.all([categoriesPromise, facade.fetchProductById(productId)])
 
         if (!product) {
           showToast('❌ Товар не знайдений', 'error')
@@ -149,8 +115,8 @@ const CreateProductPage: React.FC = () => {
           title: product.title,
           description: product.description,
           price: product.price,
-          category: resolveCategoryId(catalogCategories.length ? catalogCategories : DEFAULT_CATALOG_CATEGORIES, product.category || ''),
-          subcategory: resolveCategoryId(catalogCategories.length ? catalogCategories : DEFAULT_CATALOG_CATEGORIES, product.subcategory || ''),
+          category: resolveCategoryId(loadedCategories, product.category || ''),
+          subcategory: resolveCategoryId(loadedCategories, product.subcategory || ''),
           stock: product.stock,
           image_url: product.image_url,
         })
@@ -195,6 +161,16 @@ const CreateProductPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!formData.category) {
+      showToast('ℹ️ Виберіть категорію', 'info')
+      return
+    }
+    if (!formData.subcategory) {
+      showToast('ℹ️ Виберіть підкатегорію', 'info')
+      return
+    }
+
     setIsLoading(true)
 
     try {

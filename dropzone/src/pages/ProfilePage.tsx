@@ -268,7 +268,7 @@ const ProfilePage: React.FC = () => {
                     <div className="review-header">
                       <div>
                         <div className="review-rating">{'⭐'.repeat(review.rating)}</div>
-                        <p className="review-comment">{review.comment}</p>
+                        <p className="review-comment">{review.text}</p>
                       </div>
                       <small className="review-date">
                         {new Date(review.created_at).toLocaleDateString('uk-UA')}
@@ -307,7 +307,7 @@ const ProfilePage: React.FC = () => {
                     <div className="review-header">
                       <div>
                         <div className="review-rating">{'⭐'.repeat(review.rating)}</div>
-                        <p className="review-comment">{review.comment}</p>
+                        <p className="review-comment">{review.text}</p>
                         <small className="review-buyer">Від: <strong>{review.buyer_name}</strong></small>
                       </div>
                       <small className="review-date">

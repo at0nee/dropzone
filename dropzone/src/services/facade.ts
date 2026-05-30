@@ -3,6 +3,7 @@ import * as adminData from '../utils/adminData'
 
 type HomeSummaryPayload = {
   completedPurchasesCount: number
+  usersCount?: number
   productsCount?: number
   activeSellersCount?: number
   categoriesCount?: number
@@ -41,8 +42,14 @@ export const createProduct = async (data: any) => {
   try {
     const res = await productService.create(data)
     return res.data.data
-  } catch {
+  } catch (error: any) {
+    if (error?.response) {
+      throw error
+    }
     const products = adminData.getStoredProducts()
+    const titleKey = String(data?.title || '').trim().replace(/\s+/g, ' ').toLowerCase()
+    const duplicate = products.some((p: any) => String(p?.title || '').trim().replace(/\s+/g, ' ').toLowerCase() === titleKey)
+    if (duplicate) return null
     const next = [{ ...data, id: 'prod-' + Date.now(), created_at: new Date().toISOString() }, ...products]
     adminData.saveStoredProducts(next)
     return next[0]
@@ -93,6 +100,9 @@ export const updateUser = async (id: string, data: any) => {
     const res = await userService.update(id, data)
     return res.data.data
   } catch {
+    if (data?.current_password || data?.new_password || typeof data?.email === 'string') {
+      return null
+    }
     const users = adminData.getStoredUsers()
     const idx = users.findIndex((u: any) => u.id === id)
     if (idx !== -1) {
@@ -235,6 +245,7 @@ export const getHomeSummary = async (): Promise<HomeSummaryPayload> => {
     const payload = res.data.data ?? (res.data as any)
     return {
       completedPurchasesCount: Number(payload?.completedPurchasesCount || 0),
+      usersCount: Number(payload?.usersCount || 0),
       productsCount: Number(payload?.productsCount || 0),
       activeSellersCount: Number(payload?.activeSellersCount || 0),
       categoriesCount: Number(payload?.categoriesCount || 0),
@@ -247,6 +258,7 @@ export const getHomeSummary = async (): Promise<HomeSummaryPayload> => {
     const fallbackProducts = adminData.getStoredProducts() || []
     return {
       completedPurchasesCount: adminData.getStoredOrders().filter((order: any) => order.status === 'completed').length,
+      usersCount: adminData.getStoredUsers().length,
       productsCount: fallbackProducts.length,
       activeSellersCount: new Set((Array.isArray(fallbackProducts) ? fallbackProducts : []).map((product: any) => product.seller_id)).size,
       categoriesCount: new Set((Array.isArray(fallbackProducts) ? fallbackProducts : []).map((product: any) => product.category)).size,

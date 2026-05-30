@@ -29,6 +29,8 @@ const OrdersPage: React.FC = () => {
   const [loading, setLoading] = useState(true)
 
   const [tab, setTab] = useState<'purchases' | 'sales'>('purchases')
+  const [orderSort, setOrderSort] = useState<'newest' | 'oldest' | 'status'>('newest')
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | 'pending' | 'completed' | 'disputed' | 'refunded'>('all')
   const [reviewModal, setReviewModal] = useState<{ show: boolean; order?: Order }>({ show: false })
   const [rating, setRating] = useState(5)
   const [reviewComment, setReviewComment] = useState('')
@@ -283,6 +285,23 @@ const OrdersPage: React.FC = () => {
     return <div className="orders-loading">Завантаження...</div>
   }
 
+  // Prepare filtered and sorted order lists for rendering
+  const basePurchases = orders.filter(o => o.buyer_id === user?.id)
+  const filteredPurchases = orderStatusFilter === 'all' ? basePurchases : basePurchases.filter(o => o.status === orderStatusFilter)
+  const purchaseOrders = [...filteredPurchases].sort((a, b) => {
+    if (orderSort === 'newest') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    if (orderSort === 'oldest') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    return 0
+  })
+
+  const baseSales = orders.filter(o => o.seller_id === user?.id)
+  const filteredSales = orderStatusFilter === 'all' ? baseSales : baseSales.filter(o => o.status === orderStatusFilter)
+  const saleOrders = [...filteredSales].sort((a, b) => {
+    if (orderSort === 'newest') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    if (orderSort === 'oldest') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    return 0
+  })
+
   return (
     <div className="orders-page">
       <div className="orders-header">
@@ -308,183 +327,196 @@ const OrdersPage: React.FC = () => {
       </div>
 
       <div className="orders-container">
-        {tab === 'purchases' ? (
-          // Замовлення де юзер - покупець
-          (() => {
-            const purchaseOrders = orders
-              .filter(o => o.buyer_id === user?.id)
-              .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-            return purchaseOrders.length === 0 ? (
-              <div className="empty-orders">
-                <div className="empty-icon">📦</div>
-                <h2>Замовлень немає</h2>
-                <p>Поки ви не купили жодного товару</p>
-                <button
-                  className="browse-btn"
-                  onClick={() => navigate('/catalog')}
-                >
-                  Переглянути каталог
-                </button>
-              </div>
-            ) : (
-              <div className="orders-list">
-                {purchaseOrders.map((order) => (
-                  <div key={order.id} className="order-card">
-                    <div className="order-info">
-                      <div className="order-header">
-                        <h3>{order.product_name}</h3>
-                        <span className={`status ${getStatusColor(order.status)}`}>
-                          {getStatusLabel(order.status)}
-                        </span>
-                      </div>
+        <div className="orders-layout">
+          <aside className="orders-filters">
+            <h4>Фільтри</h4>
+            <div className="status-filters">
+              <button className={`status-filter-btn ${orderStatusFilter === 'all' ? 'active' : ''}`} onClick={() => setOrderStatusFilter('all')}>Усі</button>
+              <button className={`status-filter-btn ${orderStatusFilter === 'pending' ? 'active' : ''}`} onClick={() => setOrderStatusFilter('pending')}>⏳ Чекає</button>
+              <button className={`status-filter-btn ${orderStatusFilter === 'completed' ? 'active' : ''}`} onClick={() => setOrderStatusFilter('completed')}>✅ Завершено</button>
+              <button className={`status-filter-btn ${orderStatusFilter === 'disputed' ? 'active' : ''}`} onClick={() => setOrderStatusFilter('disputed')}>⚠️ Спір</button>
+              <button className={`status-filter-btn ${orderStatusFilter === 'refunded' ? 'active' : ''}`} onClick={() => setOrderStatusFilter('refunded')}>↩️ Повернено</button>
+            </div>
 
-                      <div className="order-details">
-                        <div className="detail-item">
-                          <span className="label">ID:</span>
-                          <span className="value code">{order.id}</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="label">Продавець:</span>
-                          <span className="value">{order.seller_name}</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="label">Ціна:</span>
-                          <span className="value price">{order.price.toFixed(2)}₴</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="label">Дата:</span>
-                          <span className="value">
-                            {new Date(order.created_at).toLocaleDateString('uk-UA')}
+            <div className="orders-sort-panel">
+              <h4>Сортування</h4>
+              <div className="orders-sort-control">
+                <label htmlFor="orders-sort">Порядок:</label>
+                <select id="orders-sort" value={orderSort} onChange={(e) => setOrderSort(e.target.value as any)}>
+                  <option value="newest">Нові</option>
+                  <option value="oldest">Старі</option>
+                </select>
+              </div>
+            </div>
+          </aside>
+          <div className="orders-content">
+            {tab === 'purchases' ? (
+              purchaseOrders.length === 0 ? (
+                <div className="empty-orders">
+                  <div className="empty-icon">📦</div>
+                  <h2>Замовлень немає</h2>
+                  <p>Поки ви не купили жодного товару</p>
+                  <button
+                    className="browse-btn"
+                    onClick={() => navigate('/catalog')}
+                  >
+                    Переглянути каталог
+                  </button>
+                </div>
+              ) : (
+                <div className="orders-list">
+                  {purchaseOrders.map((order) => (
+                    <div key={order.id} className="order-card">
+                      <div className="order-info">
+                        <div className="order-header">
+                          <h3>{order.product_name}</h3>
+                          <span className={`status ${getStatusColor(order.status)}`}>
+                            {getStatusLabel(order.status)}
                           </span>
                         </div>
-                      </div>
 
-                      {order.status === 'pending' && (
-                        <div className="order-actions">
-                          <button
-                            className="btn-complete"
-                            onClick={() => handleCompleteOrder(order.id)}
-                          >
-                            <CheckCircle size={18} />
-                            Товар отримано ✓
-                          </button>
-                          <button
-                            className="btn-dispute"
-                            onClick={() => handleOpenDispute(order.id)}
-                          >
+                        <div className="order-details">
+                          <div className="detail-item">
+                            <span className="label">ID:</span>
+                            <span className="value code">{order.id}</span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="label">Продавець:</span>
+                            <span className="value">{order.seller_name}</span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="label">Ціна:</span>
+                            <span className="value price">{order.price.toFixed(2)}₴</span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="label">Дата:</span>
+                            <span className="value">
+                              {new Date(order.created_at).toLocaleDateString('uk-UA')}
+                            </span>
+                          </div>
+                        </div>
+
+                        {order.status === 'pending' && (
+                          <div className="order-actions">
+                            <button
+                              className="btn-complete"
+                              onClick={() => handleCompleteOrder(order.id)}
+                            >
+                              <CheckCircle size={18} />
+                              Товар отримано ✓
+                            </button>
+                            <button
+                              className="btn-dispute"
+                              onClick={() => handleOpenDispute(order.id)}
+                            >
+                              <AlertCircle size={18} />
+                              Відкрити спір
+                            </button>
+                          </div>
+                        )}
+
+                        {order.status === 'completed' && (
+                          <div className="order-actions">
+                            {hasAlreadyReviewed(order) ? (
+                              <button
+                                className="btn-review-done"
+                                disabled
+                                title={order.seller_id === user?.id ? 'Не можна залишити відгук про себе' : 'Ви вже залишили відгук'}
+                              >
+                                ✅ {order.seller_id === user?.id ? 'Це ваш товар' : 'Відгук залишено'}
+                              </button>
+                            ) : (
+                              <button
+                                className="btn-review"
+                                onClick={() => handleOpenReviewModal(order)}
+                              >
+                                ⭐ Залишити відгук
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {order.status === 'disputed' && (
+                          <div className="dispute-warning">
                             <AlertCircle size={18} />
-                            Відкрити спір
-                          </button>
-                        </div>
-                      )}
-
-                      {order.status === 'completed' && (
-                        <div className="order-actions">
-                          {hasAlreadyReviewed(order) ? (
-                            <button
-                              className="btn-review-done"
-                              disabled
-                              title={order.seller_id === user?.id ? 'Не можна залишити відгук про себе' : 'Ви вже залишили відгук'}
-                            >
-                              ✅ {order.seller_id === user?.id ? 'Це ваш товар' : 'Відгук залишено'}
-                            </button>
-                          ) : (
-                            <button
-                              className="btn-review"
-                              onClick={() => handleOpenReviewModal(order)}
-                            >
-                              ⭐ Залишити відгук
-                            </button>
-                          )}
-                        </div>
-                      )}
-
-                      {order.status === 'disputed' && (
-                        <div className="dispute-warning">
-                          <AlertCircle size={18} />
-                          <span>Спір відкритий. Зв'яжіться з продавцем щоб вирішити проблему</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <button
-                      className="contact-btn"
-                      onClick={() => handleContactSeller(order.seller_id)}
-                    >
-                      <MessageCircle size={18} />
-                      Чат
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )
-          })()
-        ) : (
-          // Замовлення де юзер - продавець
-          (() => {
-            const saleOrders = orders
-              .filter(o => o.seller_id === user?.id)
-              .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-            return saleOrders.length === 0 ? (
-              <div className="empty-orders">
-                <div className="empty-icon">🏪</div>
-                <h2>Продаж немає</h2>
-                <p>Поки ніхто не купив ваші товари</p>
-              </div>
-            ) : (
-              <div className="orders-list">
-                {saleOrders.map((order) => (
-                  <div key={order.id} className="order-card seller-order">
-                    <div className="order-info">
-                      <div className="order-header">
-                        <h3>{order.product_name}</h3>
-                        <span className={`status ${getStatusColor(order.status)}`}>
-                          {getStatusLabel(order.status)}
-                        </span>
+                            <span>Спір відкритий. Зв'яжіться з продавцем щоб вирішити проблему</span>
+                          </div>
+                        )}
                       </div>
 
-                      <div className="order-details">
-                        <div className="detail-item">
-                          <span className="label">ID:</span>
-                          <span className="value code">{order.id}</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="label">Покупець:</span>
-                          <span className="value">{order.buyer_id || 'Невідомо'}</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="label">Ціна:</span>
-                          <span className="value price">{order.price.toFixed(2)}₴</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="label">Дата:</span>
-                          <span className="value">
-                            {new Date(order.created_at).toLocaleDateString('uk-UA')}
+                      <button
+                        className="contact-btn"
+                        onClick={() => handleContactSeller(order.seller_id)}
+                      >
+                        <MessageCircle size={18} />
+                        Чат
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : (
+              saleOrders.length === 0 ? (
+                <div className="empty-orders">
+                  <div className="empty-icon">🏪</div>
+                  <h2>Продаж немає</h2>
+                  <p>Поки ніхто не купив ваші товари</p>
+                </div>
+              ) : (
+                <div className="orders-list">
+                  {saleOrders.map((order) => (
+                    <div key={order.id} className="order-card seller-order">
+                      <div className="order-info">
+                        <div className="order-header">
+                          <h3>{order.product_name}</h3>
+                          <span className={`status ${getStatusColor(order.status)}`}>
+                            {getStatusLabel(order.status)}
                           </span>
                         </div>
+
+                        <div className="order-details">
+                          <div className="detail-item">
+                            <span className="label">ID:</span>
+                            <span className="value code">{order.id}</span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="label">Покупець:</span>
+                            <span className="value">{order.buyer_id || 'Невідомо'}</span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="label">Ціна:</span>
+                            <span className="value price">{order.price.toFixed(2)}₴</span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="label">Дата:</span>
+                            <span className="value">
+                              {new Date(order.created_at).toLocaleDateString('uk-UA')}
+                            </span>
+                          </div>
+                        </div>
+
+                        {order.status === 'disputed' && (
+                          <div className="dispute-warning">
+                            <AlertCircle size={18} />
+                            <span>Спір відкритий. Гроші утримані на рахунку</span>
+                          </div>
+                        )}
                       </div>
 
-                      {order.status === 'disputed' && (
-                        <div className="dispute-warning">
-                          <AlertCircle size={18} />
-                          <span>Спір відкритий. Гроші утримані на рахунку</span>
-                        </div>
-                      )}
+                      <button
+                        className="contact-btn"
+                        onClick={() => navigate(`/chat/${order.buyer_id || order.seller_id}`)}
+                      >
+                        <MessageCircle size={18} />
+                        Чат
+                      </button>
                     </div>
-
-                    <button
-                      className="contact-btn"
-                      onClick={() => navigate(`/chat/${order.buyer_id || order.seller_id}`)}
-                    >
-                      <MessageCircle size={18} />
-                      Чат
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )
-          })()
-        )}
+                  ))}
+                </div>
+              )
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Review Modal */}

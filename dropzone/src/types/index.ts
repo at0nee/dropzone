@@ -17,8 +17,10 @@ export interface Product {
   description: string
   price: number
   category: string
+  subcategory?: string
   seller_id: string
   seller: User
+  seller_name?: string
   image_url: string
   images: string[]
   rating: number

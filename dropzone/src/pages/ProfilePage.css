@@ -99,6 +99,24 @@
   font-size: 1.3rem;
 }
 
+.security-section .section-header {
+  margin-bottom: 1rem;
+}
+
+.security-section .section-header p {
+  margin: 0.35rem 0 0;
+}
+
+.security-section .section-header svg {
+  flex-shrink: 0;
+  color: var(--accent-primary);
+}
+
+.security-note {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
 .section-header {
   display: flex;
   justify-content: space-between;
@@ -136,6 +154,26 @@
   gap: 1rem;
 }
 
+.security-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.security-form .form-group:nth-child(1) {
+  grid-column: 1 / -1;
+}
+
+.security-form .form-group:nth-child(4) {
+  grid-column: 1 / -1;
+}
+
+.security-form .btn-save {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
 .form-group {
   display: flex;
   flex-direction: column;
@@ -162,6 +200,10 @@
   background: rgba(0, 212, 255, 0.1);
 }
 
+.form-group input::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
 .btn-save {
   background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 153, 255, 0.2));
   border: 1px solid rgba(0, 212, 255, 0.3);
@@ -176,6 +218,23 @@
 .btn-save:hover {
   background: linear-gradient(135deg, rgba(0, 212, 255, 0.3), rgba(0, 153, 255, 0.3));
   border-color: rgba(0, 212, 255, 0.5);
+}
+
+@media (max-width: 720px) {
+  .profile-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .profile-stats {
+    gap: 1rem;
+  }
+
+  .info-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+  }
 }
 
 .info-row {
@@ -377,6 +436,150 @@
   animation: slideUp 0.3s ease-out;
 }
 
+.modal-content.credentials-modal {
+  /* Force the credentials modal to use more horizontal space */
+  max-width: none;
+  width: min(1360px, 95vw);
+  padding: 2rem 2.5rem;
+  overflow: hidden;
+}
+
+.credentials-modal {
+  /* fallback selector kept for compatibility */
+  max-width: 1360px;
+  width: min(1360px, 95vw);
+  padding: 2rem 2.5rem;
+  overflow: hidden;
+}
+
+.credentials-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2rem;
+  padding-bottom: 1.5rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(0, 212, 255, 0.12);
+}
+
+.credentials-modal-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.credentials-modal-title-block h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1.55rem;
+}
+
+.credentials-modal-header p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.credentials-meta-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem 1.1rem;
+  border-radius: 12px;
+  background: rgba(0, 212, 255, 0.05);
+  border: 1px solid rgba(0, 212, 255, 0.12);
+}
+
+.credentials-meta-card--wide {
+  min-width: 280px;
+  align-self: stretch;
+}
+
+.credentials-meta-label {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.credentials-modal-form {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 1.25rem;
+  align-items: start;
+}
+
+.credentials-modal-form .form-group {
+  width: 100%;
+}
+
+.credentials-modal-form .form-group input {
+  width: 100%;
+}
+
+.credentials-modal-note,
+.credentials-modal-actions {
+  grid-column: 1 / -1;
+}
+
+.credentials-modal-note {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+
+.credentials-modal-actions {
+  width: 100%;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: 0.75rem;
+  gap: 1rem;
+}
+
+.credentials-modal-actions .btn-save {
+  min-width: 260px;
+}
+
+@media (max-width: 720px) {
+  .credentials-modal {
+    width: min(100vw - 1rem, 100%);
+    padding: 1.5rem;
+  }
+
+  .credentials-modal-header {
+    flex-direction: column;
+  }
+
+  .credentials-meta-card--wide {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .credentials-modal-form {
+    grid-template-columns: 1fr;
+  }
+
+  .credentials-modal-form .form-group,
+  .credentials-modal-note,
+  .credentials-modal-actions {
+    grid-column: auto;
+  }
+
+  .credentials-modal-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .credentials-modal-actions .btn-save {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
 @keyframes slideUp {
   from {
     transform: translateY(30px);
@@ -413,6 +616,10 @@
   padding: 0.6rem 1.5rem;
   border-radius: 8px;
   cursor: pointer;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem 1.25rem;
+    align-items: start;
   font-weight: 600;
   transition: all 0.3s;
 }
@@ -425,7 +632,7 @@
   background: rgba(244, 67, 54, 0.15);
   border: 1px solid rgba(244, 67, 54, 0.3);
   color: #f44336;
-  padding: 0.6rem 1.5rem;
+    min-width: 260px;
   border-radius: 8px;
   cursor: pointer;
   font-weight: 600;
@@ -468,7 +675,6 @@
   color: var(--accent-primary);
   border-bottom-color: var(--accent-primary);
 }
-
 /* Products Grid */
 .my-products-grid {
   display: grid;
@@ -477,9 +683,10 @@
 }
 
 .product-card-profile {
-  background: var(--bg-tertiary);
-  border: 1px solid rgba(0, 212, 255, 0.1);
-  border-radius: 12px;
+  background: rgba(0, 212, 255, 0.05);
+  border: 1px solid rgba(0, 212, 255, 0.15);
+  border-radius: 8px;
+  padding: 0;
   overflow: hidden;
   transition: all 0.3s;
   display: flex;
@@ -488,28 +695,22 @@
 
 .product-card-profile:hover {
   border-color: rgba(0, 212, 255, 0.3);
-  box-shadow: 0 4px 12px rgba(0, 212, 255, 0.1);
+  background: rgba(0, 212, 255, 0.08);
 }
 
-.product-image {
+.product-card-profile .product-image img {
   width: 100%;
-  height: 180px;
-  overflow: hidden;
-  background: rgba(0, 212, 255, 0.05);
-}
-
-.product-image img {
-  width: 100%;
-  height: 100%;
+  height: 140px;
   object-fit: cover;
+  display: block;
 }
 
-.product-info {
+.product-card-profile .product-info {
   padding: 1rem;
   flex: 1;
 }
 
-.product-info h3 {
+.product-card-profile .product-info h3 {
   margin: 0 0 0.5rem 0;
   font-size: 1rem;
   color: var(--text-primary);
@@ -518,7 +719,7 @@
   text-overflow: ellipsis;
 }
 
-.product-price {
+.product-card-profile .product-price {
   color: var(--accent-primary);
   font-weight: 600;
   margin: 0.5rem 0;

@@ -17,8 +17,16 @@ interface SellerLeaderboardItem {
 
 const HomePage: React.FC = () => {
   const navigate = useNavigate()
+  const heroRef = useRef<HTMLElement>(null)
+  const productsSectionRef = useRef<HTMLElement>(null)
+  const heroTargetRef = useRef({ x: 0, y: 0 })
+  const heroCurrentRef = useRef({ x: 0, y: 0 })
+  const heroActiveRef = useRef(false)
+  const heroFrameRef = useRef<number | null>(null)
   const popularCarouselRef = useRef<HTMLDivElement>(null)
   const [reviews, setReviews] = useState<ReviewLike[]>([])
+  const [usersCount, setUsersCount] = useState(0)
+  const [showScrollCue, setShowScrollCue] = useState(false)
   const [popularFromServer, setPopularFromServer] = useState<Product[]>([])
   const [completedPurchasesCount, setCompletedPurchasesCount] = useState(0)
   const [salesCountBySellerSummary, setSalesCountBySellerSummary] = useState<Record<string, number>>({})
@@ -35,6 +43,7 @@ const HomePage: React.FC = () => {
         const summary = await getHomeSummary()
 
         setReviews((Array.isArray(savedReviews) ? savedReviews : savedReviews?.data) || [])
+        setUsersCount(summary.usersCount || 0)
         setCompletedPurchasesCount(summary.completedPurchasesCount || 0)
         setProductsCount(summary.productsCount || 0)
         setActiveSellersCount(summary.activeSellersCount || 0)
@@ -58,6 +67,61 @@ const HomePage: React.FC = () => {
     }
 
     fetchData()
+    const cueTimer = window.setTimeout(() => setShowScrollCue(true), 900)
+
+    return () => {
+      window.clearTimeout(cueTimer)
+    }
+  }, [])
+
+  useEffect(() => {
+    const hero = heroRef.current
+    if (!hero) return
+
+    const updateParallax = (clientX: number, clientY: number) => {
+      const rect = hero.getBoundingClientRect()
+      const x = ((clientX - rect.left) / rect.width - 0.5) * 100
+      const y = ((clientY - rect.top) / rect.height - 0.5) * 100
+      heroTargetRef.current = { x, y }
+      heroActiveRef.current = true
+    }
+
+    const handleMove = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') return
+      updateParallax(event.clientX, event.clientY)
+    }
+
+    const handleLeave = () => {
+      heroActiveRef.current = false
+    }
+
+    const tick = (timestamp: number) => {
+      const current = heroCurrentRef.current
+      const target = heroTargetRef.current
+      const driftX = Math.sin(timestamp / 1800) * 3.2 + Math.cos(timestamp / 2600) * 1.8
+      const driftY = Math.cos(timestamp / 2200) * 2.8 + Math.sin(timestamp / 3100) * 1.4
+      const smoothness = heroActiveRef.current ? 0.08 : 0.03
+
+      current.x += (target.x - current.x) * smoothness
+      current.y += (target.y - current.y) * smoothness
+
+      hero.style.setProperty('--hero-mx', `${current.x + driftX}`)
+      hero.style.setProperty('--hero-my', `${current.y + driftY}`)
+
+      heroFrameRef.current = window.requestAnimationFrame(tick)
+    }
+
+    hero.addEventListener('pointermove', handleMove)
+    hero.addEventListener('pointerleave', handleLeave)
+    heroFrameRef.current = window.requestAnimationFrame(tick)
+
+    return () => {
+      hero.removeEventListener('pointermove', handleMove)
+      hero.removeEventListener('pointerleave', handleLeave)
+      if (heroFrameRef.current) {
+        window.cancelAnimationFrame(heroFrameRef.current)
+      }
+    }
   }, [])
 
   const popularProducts = useMemo(() => {
@@ -137,12 +201,12 @@ const HomePage: React.FC = () => {
 
   const homepageStats = useMemo(() => {
     return [
-      { label: 'Товарів у каталозі', value: productsCount, icon: <Package size={18} /> },
       { label: 'Завершених покупок', value: completedPurchasesCount, icon: <ShoppingBag size={18} /> },
+      { label: 'Товарів у каталозі', value: productsCount, icon: <Package size={18} /> },
       { label: 'Активних продавців', value: activeSellersCount, icon: <Users size={18} /> },
-      { label: 'Категорій', value: categoriesCount, icon: <Star size={18} /> },
+      { label: 'Категорій', value: categoriesCount, icon: <Rocket size={18} /> },
     ]
-  }, [productsCount, completedPurchasesCount, activeSellersCount, categoriesCount])
+  }, [completedPurchasesCount, productsCount, activeSellersCount, categoriesCount])
 
   const scrollPopular = (direction: 'left' | 'right') => {
     const container = popularCarouselRef.current
@@ -152,20 +216,106 @@ const HomePage: React.FC = () => {
     container.scrollBy({ left: amount, behavior: 'smooth' })
   }
 
+  const scrollToNextSection = () => {
+    productsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   return (
     <div className="home-page">
-      <section className="hero-section">
-        <div className="hero-content">
-          <h1>Ласкаво просимо на Dropzone</h1>
-          <p>Вашa торгова площадка для всього, що вам потрібно</p>
-          <button className="cta-btn" onClick={() => navigate('/catalog')}>
-            Перейти до каталогу <ArrowRight size={20} />
-          </button>
+      <section className="hero-section" ref={heroRef}>
+        <div className="hero-grid-overlay" aria-hidden="true" />
+        <div className="hero-particles" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+          <span />
+          <span />
+          <span />
+          <span />
+          <span />
         </div>
+        <div className="hero-orb hero-orb-a" aria-hidden="true" />
+        <div className="hero-orb hero-orb-b" aria-hidden="true" />
+        <div className="hero-orb hero-orb-c" aria-hidden="true" />
+        <div className="hero-orb hero-orb-d" aria-hidden="true" />
+        <div className="hero-ring hero-ring-a" aria-hidden="true" />
+        <div className="hero-ring hero-ring-b" aria-hidden="true" />
+
+        <div className="hero-shell">
+          <div className="hero-content">
+            <div className="hero-kicker">Digital marketplace • Escrow • Seller ratings</div>
+            <h1>Ласкаво просимо на Dropzone</h1>
+            <p>Вашa торгова площадка для всього, що вам потрібно</p>
+
+            <div className="hero-live-strip" aria-hidden="true">
+              <span className="hero-live-dot" />
+              <span>Live market pulse</span>
+              <span className="hero-live-separator" />
+              <span>Trusted deals</span>
+              <span className="hero-live-separator" />
+              <span>24/7 activity</span>
+            </div>
+
+            <div className="hero-actions">
+              <button className="cta-btn" onClick={() => navigate('/catalog')}>
+                Перейти до каталогу <ArrowRight size={20} />
+              </button>
+
+              <div className="hero-mini-stats">
+                <div className="hero-mini-stat">
+                  <span className="hero-mini-value">{usersCount}</span>
+                  <span className="hero-mini-label">користувачів</span>
+                </div>
+                <div className="hero-mini-stat">
+                  <span className="hero-mini-value">{reviews.length}</span>
+                  <span className="hero-mini-label">відгуків</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="hero-visual" aria-hidden="true">
+            <div className="hero-visual-core" />
+            <div className="hero-panel hero-panel-main">
+              <div className="hero-panel-topline">
+                <span className="hero-panel-badge">Live</span>
+                <span className="hero-panel-caption">Dropzone network</span>
+              </div>
+              <div className="hero-panel-value">{productsCount}</div>
+              <div className="hero-panel-note">Товарів у каталозі прямо зараз</div>
+            </div>
+
+            <div className="hero-panel hero-panel-secondary hero-panel-left">
+              <ShieldCheck size={18} />
+              <span>Escrow payments</span>
+            </div>
+
+            <div className="hero-panel hero-panel-secondary hero-panel-right">
+              <Star size={18} />
+              <span>Seller rating system</span>
+            </div>
+
+            <div className="hero-float-chip hero-float-chip-a">Fast checkout</div>
+            <div className="hero-float-chip hero-float-chip-b">Secure escrow</div>
+            <div className="hero-float-chip hero-float-chip-c">New drops</div>
+
+            <div className="hero-scanline" />
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className={`hero-scroll-cue ${showScrollCue ? 'is-visible' : ''}`}
+          onClick={scrollToNextSection}
+          aria-label="Прогорнути до наступного блоку"
+        >
+          <span className="hero-scroll-cue-text">Гортай далі</span>
+          <span className="hero-scroll-cue-arrow" aria-hidden="true">↓</span>
+        </button>
       </section>
 
       <div className="container">
-        <section className="products-section">
+        <section className="products-section" ref={productsSectionRef}>
           <div className="section-header">
             <h2>
               <TrendingUp size={24} /> Популярні товари

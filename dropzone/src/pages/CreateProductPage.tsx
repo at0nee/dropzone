@@ -39,6 +39,12 @@ const flattenCatalogCategories = (categories: CatalogCategory[]) => {
   return flat
 }
 
+const normalizeProductTitleKey = (value: string) =>
+  value
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+
 const CreateProductPage: React.FC = () => {
   const navigate = useNavigate()
   const { productId } = useParams<{ productId?: string }>()
@@ -162,6 +168,12 @@ const CreateProductPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    const normalizedTitle = normalizeProductTitleKey(formData.title)
+    if (!normalizedTitle) {
+      showToast('ℹ️ Вкажіть назву товару', 'info')
+      return
+    }
+
     if (!formData.category) {
       showToast('ℹ️ Виберіть категорію', 'info')
       return
@@ -174,6 +186,17 @@ const CreateProductPage: React.FC = () => {
     setIsLoading(true)
 
     try {
+      const allProducts = await facade.fetchProducts({ page: 1, pageSize: 10000 })
+      const duplicateExists = (allProducts || []).some((product: any) => {
+        if (isEditMode && originalProduct?.id && product.id === originalProduct.id) return false
+        return normalizeProductTitleKey(product.title || '') === normalizedTitle
+      })
+      if (duplicateExists) {
+        showToast('❌ Товар з такою назвою вже існує', 'error')
+        setIsLoading(false)
+        return
+      }
+
       if (isEditMode && originalProduct) {
         const updated = await facade.updateProduct(originalProduct.id, { ...formData })
         if (updated) {
@@ -192,7 +215,12 @@ const CreateProductPage: React.FC = () => {
         }
       }
     } catch (error) {
-      showToast('❌ Помилка: ' + (error as any).message, 'error')
+      const responseError = (error as any)?.response?.data?.error
+      if (responseError === 'Product title already in use') {
+        showToast('❌ Товар з такою назвою вже існує', 'error')
+      } else {
+        showToast('❌ Помилка: ' + ((error as any)?.message || 'невідома помилка'), 'error')
+      }
     } finally {
       setIsLoading(false)
     }

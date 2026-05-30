@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Edit2, LogOut, Trash2 } from 'lucide-react'
+import { Edit2, LogOut, Trash2, Lock } from 'lucide-react'
 import { useAuthStore } from '../stores/authStore'
 import { useToast } from '../components/Toast'
 import { DEFAULT_PROFILE_AVATAR } from '../utils/defaultAvatar'
@@ -10,54 +10,54 @@ import './ProfilePage.css'
 const ProfilePage: React.FC = () => {
   const { user, logout, isAuthenticated, isInitialized } = useAuthStore()
   const navigate = useNavigate()
-  const [isEditing, setIsEditing] = useState(false)
+  const { showToast } = useToast()
+
+  const [selectedTab, setSelectedTab] = useState<'products' | 'reviews' | 'seller-reviews'>('products')
   const [myReviews, setMyReviews] = useState<any[]>([])
   const [visibleMyReviews, setVisibleMyReviews] = useState(12)
   const [myProducts, setMyProducts] = useState<any[]>([])
   const [sellerReviews, setSellerReviews] = useState<any[]>([])
   const [visibleSellerReviews, setVisibleSellerReviews] = useState(12)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
-  const [selectedTab, setSelectedTab] = useState<'products' | 'reviews' | 'seller-reviews'>('products')
   const [productToDelete, setProductToDelete] = useState<string | null>(null)
-  const { showToast } = useToast()
-
-  const [editUsername, setEditUsername] = useState('')
-  const [editEmail, setEditEmail] = useState('')
+  const [isCredentialsModalOpen, setIsCredentialsModalOpen] = useState(false)
+  const [newEmail, setNewEmail] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [currentPassword, setCurrentPassword] = useState('')
 
   useEffect(() => {
     if (!isInitialized) return
+
     if (!isAuthenticated) {
       navigate('/login')
-    } else {
-      const loadUserData = async () => {
-        const currentUser = await facade.getUser(user!.id)
-        if (currentUser) {
-          useAuthStore.setState({ user: currentUser })
-        }
+      return
+    }
 
-        const products = (await facade.fetchProducts({ page: 1, pageSize: 500 })) as any[]
-        const myProds = (products || []).filter((p: any) => p.seller_id === user?.id)
-        setMyProducts(myProds)
+    if (!user) return
 
-        const savedReviews = (await facade.getAllReviews()) as any[]
-        const myRevs = (savedReviews || []).filter((r: any) => r.buyer_id === user?.id)
-        setMyReviews(myRevs)
-        setVisibleMyReviews(12)
-
-        const sellerRevs = (savedReviews || []).filter((r: any) => r.seller_id === user?.id)
-        setSellerReviews(sellerRevs)
-        setVisibleSellerReviews(12)
-
-        setEditUsername(currentUser?.username || '')
-        setEditEmail(currentUser?.email || '')
+    const loadUserData = async () => {
+      const currentUser = await facade.getUser(user.id)
+      if (currentUser) {
+        useAuthStore.setState({ user: currentUser })
       }
 
-      loadUserData()
+      const products = (await facade.fetchProducts({ page: 1, pageSize: 500 })) as any[]
+      setMyProducts((products || []).filter((p: any) => p.seller_id === user.id))
 
-      window.addEventListener('storage', loadUserData)
-      return () => window.removeEventListener('storage', loadUserData)
+      const reviews = (await facade.getAllReviews()) as any[]
+      setMyReviews((reviews || []).filter((review: any) => review.buyer_id === user.id))
+      setVisibleMyReviews(12)
+
+      setSellerReviews((reviews || []).filter((review: any) => review.seller_id === user.id))
+      setVisibleSellerReviews(12)
     }
-  }, [isAuthenticated, isInitialized, navigate, user?.id])
+
+    loadUserData()
+
+    window.addEventListener('storage', loadUserData)
+    return () => window.removeEventListener('storage', loadUserData)
+  }, [isAuthenticated, isInitialized, navigate, user])
 
   if (!user) {
     return <div className="loading">Завантаження...</div>
@@ -73,6 +73,22 @@ const ProfilePage: React.FC = () => {
     navigate('/login')
   }
 
+  const handleOpenCredentialsModal = () => {
+    setNewEmail(user.email)
+    setNewPassword('')
+    setConfirmPassword('')
+    setCurrentPassword('')
+    setIsCredentialsModalOpen(true)
+  }
+
+  const handleCloseCredentialsModal = () => {
+    setIsCredentialsModalOpen(false)
+    setNewEmail('')
+    setNewPassword('')
+    setConfirmPassword('')
+    setCurrentPassword('')
+  }
+
   const handleEditProduct = (productId: string) => {
     navigate(`/create-product/${productId}`)
   }
@@ -82,7 +98,7 @@ const ProfilePage: React.FC = () => {
       ;(async () => {
         await facade.deleteProduct(productId)
         const products = await facade.fetchProducts()
-        setMyProducts((products || []).filter((p: any) => p.seller_id === user?.id))
+        setMyProducts((products || []).filter((p: any) => p.seller_id === user.id))
         setProductToDelete(null)
       })()
     } catch (error) {
@@ -90,38 +106,59 @@ const ProfilePage: React.FC = () => {
     }
   }
 
-  const handleToggleEdit = () => {
-    if (isEditing) {
-      setIsEditing(false)
-      setEditUsername(user.username)
-      setEditEmail(user.email)
-      return
-    }
-
-    setEditUsername(user.username)
-    setEditEmail(user.email)
-    setIsEditing(true)
-  }
-
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveCredentials = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      ;(async () => {
-        const MAX_USERNAME = 18
-        if (typeof editUsername === 'string' && editUsername.length > MAX_USERNAME) {
-          showToast(`❌ Ім'я користувача має бути не довше ${MAX_USERNAME} символів`, 'error')
-          return
-        }
+      const nextEmail = newEmail.trim()
+      const nextPassword = newPassword.trim()
+      const nextPasswordConfirm = confirmPassword.trim()
+      const currentPasswordValue = currentPassword.trim()
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      const emailChanged = nextEmail.length > 0 && nextEmail.toLowerCase() !== user.email.toLowerCase()
+      const wantsCredentialChange = emailChanged || nextPassword.length > 0
 
-        const updated = await facade.updateUser(user.id, { username: editUsername, email: editEmail })
-        if (updated) {
-          useAuthStore.setState({ user: updated })
-          showToast('✅ Дані профілю збережено', 'success')
-        } else {
-          showToast('❌ Помилка збереження', 'error')
-        }
-        setIsEditing(false)
-      })()
+      if (!wantsCredentialChange) {
+        showToast('ℹ️ Вкажіть нову пошту або новий пароль', 'info')
+        return
+      }
+
+      if (emailChanged && !emailPattern.test(nextEmail)) {
+        showToast('❌ Введіть коректну електронну адресу (наприклад name@domain.tld)', 'error')
+        return
+      }
+
+      if (!currentPasswordValue) {
+        showToast('❌ Для зміни пошти або пароля потрібно ввести поточний пароль', 'error')
+        return
+      }
+
+      if (nextPassword && nextPassword !== nextPasswordConfirm) {
+        showToast('❌ Нові паролі не збігаються', 'error')
+        return
+      }
+
+      if (nextPassword && nextPassword.length < 6) {
+        showToast('❌ Новий пароль має містити щонайменше 6 символів', 'error')
+        return
+      }
+
+      const updated = await facade.updateUser(user.id, {
+        email: emailChanged ? nextEmail : undefined,
+        current_password: currentPasswordValue,
+        new_password: nextPassword || undefined,
+      })
+
+      if (updated) {
+        useAuthStore.setState({ user: updated })
+        setNewEmail('')
+        setNewPassword('')
+        setConfirmPassword('')
+        setCurrentPassword('')
+        setIsCredentialsModalOpen(false)
+        showToast('✅ Дані профілю оновлено', 'success')
+      } else {
+        showToast('❌ Помилка збереження', 'error')
+      }
     } catch (error) {
       console.error('Помилка збереження профілю', error)
       showToast('❌ Помилка збереження', 'error')
@@ -162,6 +199,10 @@ const ProfilePage: React.FC = () => {
         <div className="profile-section">
           <div className="section-header">
             <h2>Особисті дані</h2>
+            <button className="btn-edit" onClick={handleOpenCredentialsModal}>
+              <Edit2 size={16} />
+              Редагувати
+            </button>
           </div>
 
           <div className="info-display">
@@ -329,6 +370,90 @@ const ProfilePage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {isCredentialsModalOpen && (
+        <div className="modal-overlay" onClick={handleCloseCredentialsModal}>
+          <div className="modal-content credentials-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="credentials-modal-header">
+              <div className="credentials-modal-title-block">
+                <h2>
+                  <Lock size={18} />
+                  Редагування особистих даних
+                </h2>
+                <p>Щоб змінити пошту або пароль, введіть поточний пароль.</p>
+              </div>
+
+              <div className="credentials-meta-card credentials-meta-card--wide">
+                <span className="credentials-meta-label">Поточна пошта</span>
+                <strong>{user.email}</strong>
+              </div>
+            </div>
+
+            <form className="credentials-modal-form" onSubmit={handleSaveCredentials}>
+              <div className="form-group">
+                <label htmlFor="profile-email">Нова пошта</label>
+                <input
+                  id="profile-email"
+                  type="email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  placeholder={user.email}
+                  autoComplete="email"
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="profile-current-password">Поточний пароль</label>
+                <input
+                  id="profile-current-password"
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Потрібен для підтвердження змін"
+                  autoComplete="current-password"
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="profile-password">Новий пароль</label>
+                <input
+                  id="profile-password"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Залиште порожнім, якщо не змінюєте"
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="profile-password-confirm">Підтвердження нового пароля</label>
+                <input
+                  id="profile-password-confirm"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Повторіть новий пароль"
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <p className="credentials-modal-note">
+                Поля нової пошти та нового пароля використовують різні підтвердження, але обов’язково перевіряються поточним паролем.
+              </p>
+
+              <div className="modal-actions credentials-modal-actions">
+                <button type="button" className="modal-btn-cancel" onClick={handleCloseCredentialsModal}>
+                  Скасувати
+                </button>
+                <button type="submit" className="btn-save">
+                  Зберегти зміни
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <div className="profile-actions">
         <button className="btn-logout" onClick={handleLogout}>

@@ -66,7 +66,7 @@ export const authService = {
 
 // Products endpoints
 export const productService = {
-  getAll: (params?: Record<string, any>) => api.get<ApiResponse<Product[]>>('/products', { params }),
+  getAll: (params?: Record<string, any>) => api.get<ApiResponse<{ items: Product[]; total?: number }>>('/products', { params }),
   
   getById: (id: string) => api.get<ApiResponse<Product>>(`/products/${id}`),
   
@@ -76,7 +76,7 @@ export const productService = {
   
   // Public popular products (global)
   getPopular: () => api.get<ApiResponse<Product[]>>('/public/popular-products'),
-  getHomeSummary: () => api.get<ApiResponse<{ completedPurchasesCount: number; productsCount?: number; activeSellersCount?: number; categoriesCount?: number; popularProducts: Product[]; salesCountBySeller?: Record<string, number>; salesCountByProduct?: Record<string, number>; sellerNamesById?: Record<string, string> }>>('/public/home-summary'),
+  getHomeSummary: () => api.get<ApiResponse<{ completedPurchasesCount: number; usersCount?: number; productsCount?: number; activeSellersCount?: number; categoriesCount?: number; popularProducts: Product[]; salesCountBySeller?: Record<string, number>; salesCountByProduct?: Record<string, number>; sellerNamesById?: Record<string, string> }>>('/public/home-summary'),
 }
 
 // Cart endpoints
@@ -135,7 +135,7 @@ export const ordersService = {
 export const userService = {
   getAll: () => api.get<ApiResponse<User[]>>('/users'),
   getById: (id: string) => api.get<ApiResponse<User>>(`/users/${id}`),
-  update: (id: string, data: Partial<User>) => api.put<ApiResponse<User>>(`/users/${id}`, data),
+  update: (id: string, data: Partial<User> & { current_password?: string; new_password?: string }) => api.put<ApiResponse<User>>(`/users/${id}`, data),
 }
 
 export default api

@@ -246,7 +246,7 @@
   -webkit-box-orient: vertical;
 }
 
-.product-footer {
+.product-item .product-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;

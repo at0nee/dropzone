@@ -62,6 +62,7 @@ const CatalogPage: React.FC = () => {
   const [appSearchQuery, setAppSearchQuery] = useState('')
   const [priceRange, setPriceRange] = useState([0, 10000])
   const [visibleCount, setVisibleCount] = useState(24)
+  const [sortOption, setSortOption] = useState<'newest' | 'price_asc' | 'price_desc' | 'popular' | 'least_popular'>('newest')
   const pageSize = 24
   const rootCategories = useMemo(() => categories.filter((category) => !category.parent_id), [categories])
   const activeSubcategory = selectedProductType || selectedApp
@@ -72,9 +73,9 @@ const CatalogPage: React.FC = () => {
     const loadAppsData = async () => {
       try {
         const response = await catalogService.getTaxonomy()
-        const payload = response.data?.data || response.data
-        const loadedCategories = flattenCatalogCategories(payload?.categories || [])
-        const loadedApps = payload?.apps || []
+        const payload = response.data?.data || {}
+        const loadedCategories = flattenCatalogCategories((payload as any).categories || [])
+        const loadedApps = (payload as any).apps || []
         setCategories(loadedCategories)
         setApps(loadedApps)
       } catch (error) {
@@ -125,9 +126,9 @@ const CatalogPage: React.FC = () => {
         if (selectedCategory) params.category = selectedCategory
         if (activeSubcategory) params.subcategory = activeSubcategory
         const res = await productService.getAll(params)
-        const payload = res.data?.data || res.data || {}
-        const items = payload.items || payload || []
-        const total = payload.total ?? (Array.isArray(items) ? items.length : null)
+        const payload = res.data?.data || {}
+        const items = (payload as any).items || []
+        const total = (payload as any).total ?? (Array.isArray(items) ? items.length : null)
 
         // Merge new items and dedupe by id to avoid duplicates after multiple page loads
         setProducts((current) => {
@@ -162,10 +163,31 @@ const CatalogPage: React.FC = () => {
   useEffect(() => {
     setVisibleCount(pageSize)
     setLoadingMore(false)
-  }, [selectedCategory, selectedApp, selectedProductType, appSearchQuery, priceRange])
+  }, [selectedCategory, selectedApp, selectedProductType, appSearchQuery, priceRange, sortOption])
 
-  const visibleProducts = useMemo(() => products.slice(0, visibleCount), [products, visibleCount])
-  const hasMoreProducts = visibleCount < products.length
+  const sortedProducts = useMemo(() => {
+    const list = [...products]
+    if (sortOption === 'newest') {
+      return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    }
+    if (sortOption === 'price_asc') {
+      return list.sort((a, b) => Number(a.price || 0) - Number(b.price || 0))
+    }
+    if (sortOption === 'price_desc') {
+      return list.sort((a, b) => Number(b.price || 0) - Number(a.price || 0))
+    }
+    if (sortOption === 'popular') {
+      return list.sort((a, b) => (Number(b.reviews_count || 0) - Number(a.reviews_count || 0)))
+    }
+    if (sortOption === 'least_popular') {
+      return list.sort((a, b) => (Number(a.reviews_count || 0) - Number(b.reviews_count || 0)))
+    }
+    return list
+  }, [products, sortOption])
+
+  const visibleProducts = useMemo(() => sortedProducts.slice(0, visibleCount), [sortedProducts, visibleCount])
+  const hasMoreProducts = visibleCount < sortedProducts.length
+  const visualsRef = useRef<HTMLDivElement | null>(null)
 
   const handleShowMore = () => {
     if (loadingMore) return
@@ -184,9 +206,9 @@ const CatalogPage: React.FC = () => {
       })
         .then((res) => {
           const payload = res.data?.data || res.data || {}
-          const items = payload.items || []
+          const items = (payload as any).items || []
           setProducts((current) => {
-            const map = new Map<string, typeof items[0]>()
+          const map = new Map<string, any>()
             for (const p of current) map.set(p.id, p)
             for (const p of items) {
               if (matchesCatalogFilters(p, { search: normalizedSearch, category: selectedCategory, subcategory: activeSubcategory, minPrice: priceRange[0], maxPrice: priceRange[1] })) {
@@ -229,8 +251,71 @@ const CatalogPage: React.FC = () => {
     setAppSearchQuery('')
   }
 
+  useEffect(() => {
+    let raf = 0 as number | null
+    let lastX = 0
+    let lastY = 0
+    const onMove = (e: MouseEvent) => {
+      const w = window.innerWidth || 1
+      const h = window.innerHeight || 1
+      const x = (e.clientX / w - 0.5) * 40 // -20..20
+      const y = (e.clientY / h - 0.5) * 40
+      lastX = x
+      lastY = y
+      if (!raf) {
+        raf = requestAnimationFrame(() => {
+          if (visualsRef.current) {
+            visualsRef.current.style.setProperty('--mx', String(lastX))
+            visualsRef.current.style.setProperty('--my', String(lastY))
+          }
+          raf = 0
+        }) as unknown as number
+      }
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('touchmove', (ev) => {
+      if (ev.touches && ev.touches[0]) onMove(ev.touches[0] as unknown as MouseEvent)
+    }, { passive: true })
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [])
+
   return (
     <div className="catalog-page">
+      <div className="catalog-visuals" aria-hidden="true" ref={visualsRef}>
+        <span className="catalog-visuals-grid" />
+        <span className="catalog-visuals-orb catalog-visuals-orb-a" />
+        <span className="catalog-visuals-orb catalog-visuals-orb-b" />
+        <span className="catalog-visuals-orb catalog-visuals-orb-c" />
+        <span className="catalog-visuals-orb catalog-visuals-orb-d" />
+        <span className="catalog-visuals-orb catalog-visuals-orb-e" />
+        <span className="catalog-visuals-edge catalog-visuals-edge-left" />
+        <span className="catalog-visuals-edge catalog-visuals-edge-right" />
+        <span className="catalog-visuals-scan" />
+        <span className="catalog-visuals-particles">
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+        </span>
+        <span className="catalog-visuals-lines" aria-hidden="true">
+          <span className="catalog-visuals-ring" />
+          <span className="catalog-visuals-ring small" />
+          <span className="catalog-visuals-swoosh spin-slow"><span className="dot" /></span>
+          <span className="catalog-visuals-swoosh spin-fast"><span className="dot" /></span>
+        </span>
+        {/* SVG path animations removed temporarily (caused large fills) */}
+      </div>
       <div className="catalog-header">
         <h1>Каталог товарів</h1>
         <p>Знайдіть все, що вам потрібно</p>
@@ -377,6 +462,20 @@ const CatalogPage: React.FC = () => {
             <>
                   <div className="results-info">
                     <p>Знайдено {totalProducts !== null ? totalProducts : products.length} товарів, показано {visibleProducts.length}</p>
+                    <div className="sort-control">
+                      <label htmlFor="catalog-sort">Сортування:</label>
+                      <select
+                        id="catalog-sort"
+                        value={sortOption}
+                        onChange={(e) => setSortOption(e.target.value as any)}
+                      >
+                        <option value="newest">Нові</option>
+                        <option value="popular">Популярні</option>
+                        <option value="least_popular">Менш популярні</option>
+                        <option value="price_asc">Зростання ціни</option>
+                        <option value="price_desc">Зменшення ціни</option>
+                      </select>
+                    </div>
                   </div>
               <div className="products-grid-virtual">
                 <div className="products-grid">

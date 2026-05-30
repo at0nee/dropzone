@@ -134,6 +134,12 @@ const PRODUCT_TITLE_MAX = 56
 const PRODUCT_DESCRIPTION_MAX = 512
 const REVIEW_COMMENT_MAX = 100
 
+const normalizeProductTitleKey = (value: string) =>
+  normalizeText(value)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+
 const send = (res: Response, data: unknown, status = 200) => {
   res.status(status).json({ success: true, data })
 }
@@ -278,6 +284,7 @@ const getGlobalHomeSummary = (db: Database) => {
 
   return {
     completedPurchasesCount: completedOrders.length,
+    usersCount: db.users.length,
     productsCount: visibleProducts.length,
     activeSellersCount: activeSellerIds.size,
     categoriesCount: db.catalog_categories.filter((category) => Boolean(category.parent_id)).length,
@@ -893,6 +900,9 @@ app.post('/products', asyncHandler(async (req, res) => {
 
   if (title.length > PRODUCT_TITLE_MAX) return fail(res, 400, 'Validation error', [`title must be at most ${PRODUCT_TITLE_MAX} characters`])
   if (description.length > PRODUCT_DESCRIPTION_MAX) return fail(res, 400, 'Validation error', [`description must be at most ${PRODUCT_DESCRIPTION_MAX} characters`])
+  const titleKey = normalizeProductTitleKey(title)
+  const duplicate = db.products.find((item) => normalizeProductTitleKey(item.title) === titleKey)
+  if (duplicate) return fail(res, 409, 'Product title already in use')
 
   const product: Product = {
     id: generateId('prod'),
@@ -934,6 +944,11 @@ app.put('/products/:id', asyncHandler(async (req, res) => {
   const newDescription = typeof payload.description === 'string' ? normalizeText(payload.description) : product.description
   if (typeof payload.title === 'string' && newTitle.length > PRODUCT_TITLE_MAX) return fail(res, 400, 'Validation error', [`title must be at most ${PRODUCT_TITLE_MAX} characters`])
   if (typeof payload.description === 'string' && newDescription.length > PRODUCT_DESCRIPTION_MAX) return fail(res, 400, 'Validation error', [`description must be at most ${PRODUCT_DESCRIPTION_MAX} characters`])
+  if (typeof payload.title === 'string') {
+    const titleKey = normalizeProductTitleKey(newTitle)
+    const duplicate = db.products.find((item) => item.id !== product.id && normalizeProductTitleKey(item.title) === titleKey)
+    if (duplicate) return fail(res, 409, 'Product title already in use')
+  }
   const categoryId = resolveCatalogCategoryId(db, payload.category ?? product.category)
   const subcategoryId = resolveCatalogCategoryId(db, payload.subcategory ?? product.subcategory)
   if (!categoryId) return fail(res, 400, 'Validation error', ['category is required'])
@@ -1105,9 +1120,33 @@ app.put('/users/:id', asyncHandler(async (req, res) => {
     target.username = payload.username
   }
   if (typeof payload.name === 'string') target.name = payload.name
-  if (typeof payload.email === 'string') target.email = payload.email
+  const isSelfUpdate = current.id === target.id
+  const wantsCredentialChange = typeof payload.email === 'string' || typeof payload.new_password === 'string'
+  if (wantsCredentialChange && isSelfUpdate) {
+    const currentPassword = normalizeText(payload.current_password)
+    if (!currentPassword) return fail(res, 400, 'Validation error', ['current_password is required'])
+    if (target.passwordHash !== hashPassword(currentPassword)) {
+      return fail(res, 401, 'Invalid current password')
+    }
+  }
+
+  if (typeof payload.email === 'string') {
+    const nextEmail = normalizeText(payload.email)
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!nextEmail) return fail(res, 400, 'Validation error', ['email is required'])
+    if (!emailPattern.test(nextEmail)) {
+      return fail(res, 400, 'Validation error', ['email must be a valid address like name@domain.tld'])
+    }
+    const existing = db.users.find((item) => item.id !== target.id && item.email.toLowerCase() === nextEmail.toLowerCase())
+    if (existing) return fail(res, 409, 'Email already in use')
+    target.email = nextEmail
+  }
   if (typeof payload.balance !== 'undefined') target.balance = asNumber(payload.balance, target.balance)
   if (current.role === 'admin' && typeof payload.role === 'string') target.role = payload.role as Role
+  if (typeof payload.new_password === 'string' && payload.new_password.trim().length > 0) {
+    if (payload.new_password.trim().length < 6) return fail(res, 400, 'Validation error', ['new_password must be at least 6 characters'])
+    target.passwordHash = hashPassword(normalizeText(payload.new_password))
+  }
   target.updated_at = new Date().toISOString()
 
   await saveDb(db)

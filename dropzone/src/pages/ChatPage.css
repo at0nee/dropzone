@@ -284,6 +284,26 @@
   margin: 0;
 }
 
+.message-attachment {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.message-attachment img {
+  max-width: 280px;
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 212, 255, 0.18);
+  object-fit: cover;
+  cursor: zoom-in;
+}
+
+.message-attachment span {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
 .message-content small {
   color: var(--text-secondary);
   font-size: 0.75rem;
@@ -329,6 +349,211 @@
   font-weight: 600;
   padding: 1rem 1.25rem;
   box-shadow: 0 0 20px rgba(244, 67, 54, 0.1);
+}
+
+.message-input-wrap {
+  border-top: 1px solid rgba(0, 212, 255, 0.1);
+  background: linear-gradient(180deg, var(--bg-primary), rgba(0, 212, 255, 0.02));
+}
+
+.chat-attachment-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem 0;
+  color: var(--text-primary);
+}
+
+.chat-attachment-preview img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 212, 255, 0.22);
+}
+
+.chat-attachment-preview p {
+  margin: 0.2rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.chat-attachment-remove,
+.attach-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  background: rgba(0, 212, 255, 0.08);
+  color: var(--text-primary);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.attach-btn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+
+.chat-attachment-remove {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.attach-btn:hover,
+.chat-attachment-remove:hover {
+  background: rgba(0, 212, 255, 0.16);
+  border-color: rgba(0, 212, 255, 0.35);
+}
+
+.chat-attachment-input {
+  display: none;
+}
+
+.image-viewer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.82);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 1rem;
+}
+
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+  pointer-events: none;
+}
+
+.drop-overlay-inner {
+  pointer-events: auto;
+  background: rgba(0, 153, 255, 0.12);
+  border: 2px dashed rgba(0, 153, 255, 0.36);
+  color: var(--text-primary);
+  padding: 18px 28px;
+  border-radius: 12px;
+  font-weight: 700;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.image-viewer {
+  width: min(92vw, 1100px);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: linear-gradient(180deg, rgba(8, 14, 36, 0.98), rgba(6, 11, 30, 0.98));
+  border: 1px solid rgba(0, 212, 255, 0.18);
+  border-radius: 18px;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.image-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem 0;
+  color: var(--text-primary);
+}
+
+.image-viewer-header strong {
+  display: block;
+}
+
+.image-viewer-header span {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  margin-top: 0.2rem;
+}
+
+.image-viewer-close,
+.image-viewer-controls button {
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  background: rgba(0, 212, 255, 0.08);
+  color: var(--text-primary);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.image-viewer-open {
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  background: rgba(0, 212, 255, 0.08);
+  color: var(--text-primary);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 6px 10px;
+  font-size: 0.9rem;
+}
+
+.image-viewer-close {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.image-viewer-controls {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0 1.25rem;
+}
+
+.image-viewer-controls button {
+  min-width: 48px;
+  height: 36px;
+  padding: 0 0.75rem;
+}
+
+.image-viewer-controls button:hover,
+.image-viewer-close:hover {
+  background: rgba(0, 212, 255, 0.16);
+  border-color: rgba(0, 212, 255, 0.35);
+}
+
+.image-viewer-stage {
+  position: relative;
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem 1.25rem 1.25rem;
+  min-height: 320px;
+}
+
+.image-viewer-stage img {
+  max-width: 100%;
+  max-height: 72vh;
+  transform-origin: center center;
+  transition: transform 0.12s ease-out;
+  border-radius: 12px;
+  box-shadow: 0 14px 50px rgba(0, 0, 0, 0.35);
+  user-select: none;
+  touch-action: none;
+}
+
+.image-viewer-hint {
+  margin: 0;
+  padding: 0 1.25rem 1rem;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
 }
 
 /* Message Input */

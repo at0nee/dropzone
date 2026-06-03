@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import VirtualList from '../components/VirtualList/VirtualList'
-import { ArrowLeft, CheckCircle2, MessageCircle, Shield, Users, AlertTriangle, RefreshCw, Search, BadgeInfo, Trash2, Coins } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, MessageCircle, Shield, Users, AlertTriangle, RefreshCw, Search, BadgeInfo, Trash2, Coins, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { User, UserRole, CatalogCategory } from '../types'
-import { appendChatMessageToSellerThread, findStoredUserById, getStoredChats, getStoredOrders, getStoredUsers, resolveDispute, updateStoredUserRole, getStoredProducts, saveStoredProducts, getAdminLogs, appendAdminLog, clearAdminLogs } from '../utils/adminData'
+import { appendChatMessageToSellerThread, findStoredUserById, getStoredChats, getStoredOrders, getStoredUsers, resolveDispute, updateStoredUserRole, getStoredProducts, saveStoredProducts, saveStoredUsers, getAdminLogs, appendAdminLog, clearAdminLogs } from '../utils/adminData'
 import api, { catalogService } from '../services/api'
 import CustomSelect from '../components/CustomSelect/CustomSelect'
 import { CATEGORY_ICON_FALLBACK, CATEGORY_ICON_OPTIONS, CatalogIconBadge, getCatalogIconOption } from '../utils/catalogIcons'
@@ -36,6 +36,20 @@ const batchStageLabel: Record<string, string> = {
   deleting: 'Видалення',
   deleted: 'Видалено',
   failed: 'Помилка',
+}
+
+type ImageViewerState = {
+  src: string
+  name: string
+  zoom: number
+  offsetX: number
+  offsetY: number
+}
+
+type ImageViewerState = {
+  src: string
+  name: string
+  zoom: number
 }
 
 const flattenCatalogCategories = (categories: CatalogCategory[]) => {
@@ -118,6 +132,16 @@ const AdminPage: React.FC = () => {
   const [currentBatchId, setCurrentBatchId] = useState<string | null>(null)
   const [batchStatus, setBatchStatus] = useState<any | null>(null)
   const [polling, setPolling] = useState(false)
+  const [imageViewer, setImageViewer] = useState<ImageViewerState | null>(null)
+  const imagePanRef = useRef<{ dragging: boolean; startX: number; startY: number; startOffsetX: number; startOffsetY: number; pointerId: number | null }>(
+    {
+    dragging: false,
+    startX: 0,
+    startY: 0,
+    startOffsetX: 0,
+    startOffsetY: 0,
+    pointerId: null,
+  })
   const [visibleUsersCount, setVisibleUsersCount] = useState(70)
   const [adminProductsPage, setAdminProductsPage] = useState(1)
   const [adminProductsPageSize] = useState(200)
@@ -479,6 +503,60 @@ const AdminPage: React.FC = () => {
     })()
   }
 
+  const openImageViewer = (src: string, name: string) => {
+    setImageViewer({ src, name, zoom: 1, offsetX: 0, offsetY: 0 })
+  }
+
+  const closeImageViewer = () => {
+    setImageViewer(null)
+  }
+
+  const changeViewerZoom = (delta: number) => {
+    setImageViewer((current) => {
+      if (!current) return current
+      const nextZoom = Math.min(4, Math.max(0.5, Number((current.zoom + delta).toFixed(2))))
+      return { ...current, zoom: nextZoom }
+    })
+  }
+
+  const startPan = (event: React.PointerEvent<HTMLImageElement>) => {
+    if (!imageViewer) return
+    imagePanRef.current = {
+      dragging: true,
+      startX: event.clientX,
+      startY: event.clientY,
+      startOffsetX: imageViewer.offsetX,
+      startOffsetY: imageViewer.offsetY,
+      pointerId: event.pointerId,
+    }
+    try { event.currentTarget.setPointerCapture(event.pointerId) } catch {}
+    event.preventDefault()
+  }
+
+  const movePan = (event: React.PointerEvent<HTMLImageElement>) => {
+    if (!imageViewer || !imagePanRef.current.dragging) return
+    if (imagePanRef.current.pointerId !== null && event.pointerId !== imagePanRef.current.pointerId) return
+    const dx = event.clientX - imagePanRef.current.startX
+    const dy = event.clientY - imagePanRef.current.startY
+    setImageViewer((current) => {
+      if (!current) return current
+      return {
+        ...current,
+        offsetX: imagePanRef.current.startOffsetX + dx,
+        offsetY: imagePanRef.current.startOffsetY + dy,
+      }
+    })
+  }
+
+  const endPan = (event: React.PointerEvent<HTMLImageElement>) => {
+    if (imagePanRef.current.dragging) {
+      imagePanRef.current.dragging = false
+      const pid = imagePanRef.current.pointerId
+      imagePanRef.current.pointerId = null
+      try { if (pid !== null) event.currentTarget.releasePointerCapture(pid) } catch {}
+    }
+  }
+
   const handleDeleteProduct = (productId: string) => {
     void (async () => {
       try {
@@ -595,10 +673,14 @@ const AdminPage: React.FC = () => {
 
     const targetUserId = deleteConfirmModal.userId
 
+    const removeUserFromCurrentState = () => {
+      setUsers((current) => current.filter((user) => user.id !== targetUserId))
+    }
+
     void (async () => {
       try {
         await api.delete(`/users/${targetUserId}`)
-        setUsers((current) => current.filter((u) => u.id !== targetUserId))
+        removeUserFromCurrentState()
         showToast(`✅ Користувача видалено`, 'success')
         setDeleteConfirmModal(null)
         return
@@ -606,7 +688,12 @@ const AdminPage: React.FC = () => {
         console.error('Failed to delete user via backend, using local fallback:', error)
       }
 
-      setUsers((current) => current.filter((u) => u.id !== targetUserId))
+      setUsers((current) => {
+        const nextUsers = current.filter((user) => user.id !== targetUserId)
+        saveStoredUsers(nextUsers)
+        return nextUsers
+      })
+      removeUserFromCurrentState()
       showToast(`✅ Користувача видалено`, 'success')
       setDeleteConfirmModal(null)
     })()
@@ -1501,6 +1588,24 @@ const AdminPage: React.FC = () => {
                                   </small>
                                 </div>
                                 <p>{message.text}</p>
+                                {message.attachment_data && (
+                                  <div className="chat-message-attachment">
+                                    <img
+                                      src={message.attachment_data}
+                                      alt={message.attachment_name || 'Фото у чаті'}
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={() => openImageViewer(message.attachment_data, message.attachment_name || 'Фото у чаті')}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                          e.preventDefault()
+                                          openImageViewer(message.attachment_data, message.attachment_name || 'Фото у чаті')
+                                        }
+                                      }}
+                                    />
+                                    {message.attachment_name && <small>{message.attachment_name}</small>}
+                                  </div>
+                                )}
                               </div>
                             ))
                           ) : (
@@ -1576,6 +1681,49 @@ const AdminPage: React.FC = () => {
                 Підтвердити
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {imageViewer && (
+        <div className="image-viewer-overlay" onClick={closeImageViewer} role="dialog" aria-modal="true" aria-label="Перегляд фото">
+          <div className="image-viewer" onClick={(e) => e.stopPropagation()}>
+            <div className="image-viewer-header">
+              <div>
+                <strong>{imageViewer.name}</strong>
+                <span>{Math.round(imageViewer.zoom * 100)}%</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button type="button" className="image-viewer-open" onClick={() => { try { window.open(imageViewer.src, '_blank') } catch {} }} title="Відкрити оригінал">Відкрити оригінал</button>
+                <button type="button" className="image-viewer-close" onClick={closeImageViewer} aria-label="Закрити">
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+            <div className="image-viewer-controls">
+              <button type="button" onClick={() => changeViewerZoom(-0.25)}>-</button>
+              <button type="button" onClick={() => setImageViewer((current) => current ? { ...current, zoom: 1 } : current)}>100%</button>
+              <button type="button" onClick={() => changeViewerZoom(0.25)}>+</button>
+            </div>
+            <div className="image-viewer-stage" onWheel={(e) => {
+              e.preventDefault()
+              changeViewerZoom(e.deltaY < 0 ? 0.1 : -0.1)
+            }}>
+              <img
+                src={imageViewer.src}
+                alt={imageViewer.name}
+                style={{
+                  transform: `translate(${imageViewer.offsetX}px, ${imageViewer.offsetY}px) scale(${imageViewer.zoom})`,
+                  transition: imagePanRef.current.dragging ? 'none' : 'transform 0.12s ease-out',
+                  cursor: imagePanRef.current.dragging ? 'grabbing' : 'grab',
+                }}
+                onPointerDown={startPan}
+                onPointerMove={movePan}
+                onPointerUp={endPan}
+                onPointerLeave={endPan}
+                onPointerCancel={endPan}
+              />
+            </div>
+            <p className="image-viewer-hint">Можна крутити колесо миші або натискати `+` / `-`.</p>
           </div>
         </div>
       )}

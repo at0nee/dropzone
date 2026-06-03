@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, MessageCircle } from 'lucide-react'
+import { Send, MessageCircle, Paperclip, X } from 'lucide-react'
 import { useAuthStore } from '../stores/authStore'
 import './ChatPage.css'
 import facade from '../services/facade'
@@ -14,6 +14,9 @@ interface Message {
   sender_role?: 'user' | 'support' | 'admin' | 'system'
   isSystemMessage?: boolean
   system_type?: 'info' | 'alert'
+  attachment_data?: string
+  attachment_name?: string
+  attachment_mime?: string
 }
 
 interface Chat {
@@ -96,6 +99,69 @@ const getChatDisplayName = (chat: Chat, currentUserId?: string): string => {
   return sellerName || buyerName || 'Користувач'
 }
 
+const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader()
+  reader.onload = () => resolve(String(reader.result || ''))
+  reader.onerror = () => reject(new Error('Не вдалося прочитати файл'))
+  reader.readAsDataURL(file)
+})
+
+const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
+  const image = new Image()
+  image.onload = () => resolve(image)
+  image.onerror = () => reject(new Error('Не вдалося завантажити зображення'))
+  image.src = src
+})
+
+const makeImageAttachment = async (file: File) => {
+  const sourceDataUrl = await readFileAsDataUrl(file)
+  const shouldPreserveOriginal = file.size <= 6 * 1024 * 1024
+
+  if (shouldPreserveOriginal) {
+    return {
+      dataUrl: sourceDataUrl,
+      mime: file.type || 'image/*',
+      name: file.name,
+    }
+  }
+
+  const image = await loadImage(sourceDataUrl)
+  const maxSide = 1600
+  const scale = Math.min(1, maxSide / Math.max(image.width, image.height))
+  const width = Math.max(1, Math.round(image.width * scale))
+  const height = Math.max(1, Math.round(image.height * scale))
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+
+  if (!context) {
+    return {
+      dataUrl: sourceDataUrl,
+      mime: file.type || 'image/*',
+      name: file.name,
+    }
+  }
+
+  context.drawImage(image, 0, 0, width, height)
+  const dataUrl = canvas.toDataURL(file.type === 'image/png' ? 'image/png' : 'image/jpeg', 0.9)
+
+  return {
+    dataUrl,
+    mime: file.type === 'image/png' ? 'image/png' : 'image/jpeg',
+    name: file.name,
+  }
+}
+
+type ImageViewerState = {
+  src: string
+  name: string
+  zoom: number
+  offsetX: number
+  offsetY: number
+}
+
 const ChatPage: React.FC = () => {
   const { sellerId } = useParams<{ sellerId?: string }>()
   const navigate = useNavigate()
@@ -103,9 +169,22 @@ const ChatPage: React.FC = () => {
   const [chats, setChats] = useState<Chat[]>([])
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null)
   const [messageText, setMessageText] = useState('')
+  const [pendingAttachment, setPendingAttachment] = useState<{ dataUrl: string; name: string; mime: string } | null>(null)
+  const [imageViewer, setImageViewer] = useState<ImageViewerState | null>(null)
+  const [isDragOver, setIsDragOver] = useState(false)
   const [loading, setLoading] = useState(false)
   const messagesAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const attachmentInputRef = useRef<HTMLInputElement>(null)
+  const imagePanRef = useRef<{ dragging: boolean; startX: number; startY: number; startOffsetX: number; startOffsetY: number; pointerId: number | null }>(
+    {
+    dragging: false,
+    startX: 0,
+    startY: 0,
+    startOffsetX: 0,
+    startOffsetY: 0,
+    pointerId: null,
+  })
   const CHAT_READ_STATE_EVENT = 'chat-read-state-changed'
   const stickToBottomRef = useRef(true)
 
@@ -264,8 +343,39 @@ const ChatPage: React.FC = () => {
     }
   }, [selectedChat?.id, selectedChat?.messages.length, selectedChat?.messages[selectedChat.messages.length - 1]?.id])
 
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(true)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    try { e.dataTransfer.dropEffect = 'copy' } catch {}
+    setIsDragOver(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(false)
+  }
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(false)
+    const files = Array.from(e.dataTransfer.files || [])
+    const file = files.find((f) => f.type && f.type.startsWith('image/'))
+    if (!file) return
+    try {
+      const attachment = await makeImageAttachment(file)
+      setPendingAttachment(attachment)
+    } catch {
+      // ignore
+    }
+  }
+
   const handleSendMessage = async () => {
-    if (!messageText.trim() || !selectedChat || !user) return
+    if (!selectedChat || !user) return
+    if (!messageText.trim() && !pendingAttachment) return
 
     const newMessage: Message = {
       id: 'msg-' + Date.now(),
@@ -273,6 +383,9 @@ const ChatPage: React.FC = () => {
       sender_name: user.username,
       text: messageText,
       timestamp: new Date().toISOString(),
+      attachment_data: pendingAttachment?.dataUrl,
+      attachment_name: pendingAttachment?.name,
+      attachment_mime: pendingAttachment?.mime,
     }
 
     const updatedChats = (await facade.sendMessageToSeller(selectedChat.seller_id, newMessage)) as Chat[]
@@ -282,6 +395,103 @@ const ChatPage: React.FC = () => {
     const updatedChat = sorted.find(c => c.id === selectedChat?.id) || null
     setSelectedChat(updatedChat)
     setMessageText('')
+    setPendingAttachment(null)
+    if (attachmentInputRef.current) {
+      attachmentInputRef.current.value = ''
+    }
+  }
+
+  const handleAttachmentChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setPendingAttachment(null)
+      event.target.value = ''
+      return
+    }
+
+    try {
+      const attachment = await makeImageAttachment(file)
+      setPendingAttachment(attachment)
+    } catch {
+      setPendingAttachment(null)
+    }
+  }
+
+  const handlePasteMessage = async (event: React.ClipboardEvent<HTMLInputElement>) => {
+    const items = Array.from(event.clipboardData.items || [])
+    const imageItem = items.find((item) => item.kind === 'file' && item.type.startsWith('image/'))
+    const file = imageItem?.getAsFile() || event.clipboardData.files?.[0]
+
+    if (!file || !file.type.startsWith('image/')) return
+
+    event.preventDefault()
+
+    try {
+      const attachment = await makeImageAttachment(file)
+      setPendingAttachment(attachment)
+    } catch {
+      setPendingAttachment(null)
+    }
+  }
+
+  const openImageViewer = (src: string, name: string) => {
+    setImageViewer({ src, name, zoom: 1, offsetX: 0, offsetY: 0 })
+  }
+
+  const openOriginalImage = () => {
+    if (!imageViewer) return
+    try { window.open(imageViewer.src, '_blank') } catch {}
+  }
+
+  const closeImageViewer = () => {
+    setImageViewer(null)
+  }
+
+  const changeViewerZoom = (delta: number) => {
+    setImageViewer((current) => {
+      if (!current) return current
+      const nextZoom = Math.min(4, Math.max(0.5, Number((current.zoom + delta).toFixed(2))))
+      return { ...current, zoom: nextZoom }
+    })
+  }
+
+  const startPan = (event: React.PointerEvent<HTMLImageElement>) => {
+    if (!imageViewer) return
+    imagePanRef.current = {
+      dragging: true,
+      startX: event.clientX,
+      startY: event.clientY,
+      startOffsetX: imageViewer.offsetX,
+      startOffsetY: imageViewer.offsetY,
+      pointerId: event.pointerId,
+    }
+    try { event.currentTarget.setPointerCapture(event.pointerId) } catch {}
+    event.preventDefault()
+  }
+
+  const movePan = (event: React.PointerEvent<HTMLImageElement>) => {
+    if (!imageViewer || !imagePanRef.current.dragging) return
+    if (imagePanRef.current.pointerId !== null && event.pointerId !== imagePanRef.current.pointerId) return
+    const dx = event.clientX - imagePanRef.current.startX
+    const dy = event.clientY - imagePanRef.current.startY
+    setImageViewer((current) => {
+      if (!current) return current
+      return {
+        ...current,
+        offsetX: imagePanRef.current.startOffsetX + dx,
+        offsetY: imagePanRef.current.startOffsetY + dy,
+      }
+    })
+  }
+
+  const endPan = (event: React.PointerEvent<HTMLImageElement>) => {
+    if (imagePanRef.current.dragging) {
+      imagePanRef.current.dragging = false
+      const pid = imagePanRef.current.pointerId
+      imagePanRef.current.pointerId = null
+      try { if (pid !== null) event.currentTarget.releasePointerCapture(pid) } catch {}
+    }
   }
 
   const handleCreateChat = (sellerId: string) => {
@@ -334,7 +544,8 @@ const ChatPage: React.FC = () => {
                   {lastMessage && (
                     <>
                       <p className="last-message">
-                        <strong>{lastMessage.sender_id === user?.id ? 'Ви' : sanitizeDisplayName(lastMessage.sender_name)}:</strong> {lastMessage.text}
+                        <strong>{lastMessage.sender_id === user?.id ? 'Ви' : sanitizeDisplayName(lastMessage.sender_name)}:</strong>{' '}
+                        {lastMessage.text || (lastMessage.attachment_data ? '🖼️ Фото' : '')}
                       </p>
                       <small className="message-time">
                         {formatChatTime(lastMessage.timestamp)}
@@ -348,7 +559,7 @@ const ChatPage: React.FC = () => {
         </div>
 
         {/* Область чату */}
-        <div className="chat-area">
+        <div className="chat-area" onDragEnter={handleDragEnter} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
           {selectedChat ? (
             <>
               <div className="chat-header">
@@ -388,6 +599,24 @@ const ChatPage: React.FC = () => {
                     )}
                     <div className="message-content">
                       <p>{msg.text}</p>
+                      {msg.attachment_data && (
+                        <div className="message-attachment">
+                          <img
+                            src={msg.attachment_data}
+                            alt={msg.attachment_name || 'Фото у чаті'}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => openImageViewer(msg.attachment_data!, msg.attachment_name || 'Фото у чаті')}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                openImageViewer(msg.attachment_data!, msg.attachment_name || 'Фото у чаті')
+                              }
+                            }}
+                          />
+                          {msg.attachment_name && <span>{msg.attachment_name}</span>}
+                        </div>
+                      )}
                       <small>
                         {formatChatTime(msg.timestamp)}
                       </small>
@@ -398,18 +627,96 @@ const ChatPage: React.FC = () => {
                 <div ref={messagesEndRef} />
               </div>
 
-              <div className="message-input">
-                <input
-                  type="text"
-                  placeholder="Напишіть повідомлення..."
-                  value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                />
-                <button onClick={handleSendMessage} className="send-btn">
-                  <Send size={20} />
-                </button>
+              <div className="message-input-wrap">
+                {pendingAttachment && (
+                  <div className="chat-attachment-preview">
+                    <img src={pendingAttachment.dataUrl} alt={pendingAttachment.name} />
+                    <div>
+                      <strong>{pendingAttachment.name}</strong>
+                      <p>Фото буде відправлене разом із повідомленням</p>
+                    </div>
+                    <button type="button" className="chat-attachment-remove" onClick={() => { setPendingAttachment(null); if (attachmentInputRef.current) attachmentInputRef.current.value = '' }}>
+                      <X size={16} />
+                    </button>
+                  </div>
+                )}
+
+                <div className="message-input">
+                  <input
+                    type="text"
+                    placeholder="Напишіть повідомлення..."
+                    value={messageText}
+                    onChange={(e) => setMessageText(e.target.value)}
+                    onPaste={handlePasteMessage}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                  />
+                  <button type="button" className="attach-btn" onClick={() => attachmentInputRef.current?.click()} title="Додати фото">
+                    <Paperclip size={18} />
+                  </button>
+                  <button onClick={handleSendMessage} className="send-btn">
+                    <Send size={20} />
+                  </button>
+                  <input
+                    ref={attachmentInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="chat-attachment-input"
+                    onChange={handleAttachmentChange}
+                  />
+                </div>
               </div>
+
+              {imageViewer && (
+                <div className="image-viewer-overlay" onClick={closeImageViewer} role="dialog" aria-modal="true" aria-label="Перегляд фото">
+                  <div className="image-viewer" onClick={(e) => e.stopPropagation()}>
+                    <div className="image-viewer-header">
+                      <div>
+                        <strong>{imageViewer.name}</strong>
+                        <span>{Math.round(imageViewer.zoom * 100)}%</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <button type="button" className="image-viewer-open" onClick={openOriginalImage} title="Відкрити оригінал">
+                          {"Відкрити оригінал"}
+                        </button>
+                        <button type="button" className="image-viewer-close" onClick={closeImageViewer} aria-label="Закрити">
+                          <X size={18} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="image-viewer-controls">
+                      <button type="button" onClick={() => changeViewerZoom(-0.25)}>-</button>
+                      <button type="button" onClick={() => setImageViewer((current) => current ? { ...current, zoom: 1 } : current)}>100%</button>
+                      <button type="button" onClick={() => changeViewerZoom(0.25)}>+</button>
+                    </div>
+                    <div className="image-viewer-stage" onWheel={(e) => {
+                      if (e.ctrlKey) return
+                      e.preventDefault()
+                      changeViewerZoom(e.deltaY < 0 ? 0.1 : -0.1)
+                    }}>
+                      <img
+                        src={imageViewer.src}
+                        alt={imageViewer.name}
+                        style={{
+                          transform: `translate(${imageViewer.offsetX}px, ${imageViewer.offsetY}px) scale(${imageViewer.zoom})`,
+                          transition: imagePanRef.current.dragging ? 'none' : 'transform 0.12s ease-out',
+                          cursor: imagePanRef.current.dragging ? 'grabbing' : 'grab',
+                        }}
+                        onPointerDown={startPan}
+                        onPointerMove={movePan}
+                        onPointerUp={endPan}
+                        onPointerLeave={endPan}
+                        onPointerCancel={endPan}
+                      />
+                    </div>
+                    <p className="image-viewer-hint">Можна клікати `+` / `-` або крутити колесо миші над фото.</p>
+                  </div>
+                </div>
+              )}
+              {isDragOver && (
+                <div className="drop-overlay" onDragEnter={(e) => e.preventDefault()} onClick={() => setIsDragOver(false)}>
+                  <div className="drop-overlay-inner">Киньте фото сюди, щоб додати в чат</div>
+                </div>
+              )}
             </>
           ) : (
             <div className="empty-state">

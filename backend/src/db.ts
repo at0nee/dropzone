@@ -84,6 +84,9 @@ export interface ChatMessage {
   text: string
   timestamp: string
   isSystemMessage?: boolean
+  attachment_data?: string
+  attachment_name?: string
+  attachment_mime?: string
 }
 
 export interface ChatThread {
@@ -439,9 +442,22 @@ const ensureSchema = async () => {
       sender_role VARCHAR(32),
       text TEXT,
       timestamp DATETIME NOT NULL,
-      is_system_message TINYINT(1) NOT NULL DEFAULT 0
+      is_system_message TINYINT(1) NOT NULL DEFAULT 0,
+      attachment_data MEDIUMTEXT NULL,
+      attachment_name VARCHAR(255) NULL,
+      attachment_mime VARCHAR(128) NULL
     )
   `)
+
+  try {
+    await pool.query(`ALTER TABLE ${CHAT_MESSAGES_TABLE} ADD COLUMN attachment_data MEDIUMTEXT NULL AFTER is_system_message`)
+  } catch {}
+  try {
+    await pool.query(`ALTER TABLE ${CHAT_MESSAGES_TABLE} ADD COLUMN attachment_name VARCHAR(255) NULL AFTER attachment_data`)
+  } catch {}
+  try {
+    await pool.query(`ALTER TABLE ${CHAT_MESSAGES_TABLE} ADD COLUMN attachment_mime VARCHAR(128) NULL AFTER attachment_name`)
+  } catch {}
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${CARTS_TABLE} (
@@ -628,6 +644,9 @@ const loadChats = async (): Promise<ChatThread[]> => {
       text: row.text,
       timestamp: mapDate(row.timestamp),
       isSystemMessage: Boolean(row.is_system_message),
+      attachment_data: row.attachment_data || undefined,
+      attachment_name: row.attachment_name || undefined,
+      attachment_mime: row.attachment_mime || undefined,
     })
     messagesByChatId.set(row.chat_id, list)
   })
@@ -824,6 +843,16 @@ export const saveDb = async (db: Database) => {
     // Upsert users
     const userRows = db.users.map((u) => [u.id, u.email, u.username, u.name || null, u.role, u.balance, u.rating, u.reviews_count, toMysqlDateTime(u.created_at), toMysqlDateTime(u.updated_at), u.passwordHash])
     await batchInsertUpsert(USERS_TABLE, ['id','email','username','name','role','balance','rating','reviews_count','created_at','updated_at','password_hash'], userRows, ['email','username','name','role','balance','rating','reviews_count','updated_at','password_hash'])
+    const userIds = db.users.map((user) => user.id)
+    if (userIds.length === 0) {
+      await connection.query(`DELETE FROM ${USERS_TABLE}`)
+    } else {
+      const deletePlaceholders = userIds.map(() => '?').join(',')
+      await connection.query(
+        `DELETE FROM ${USERS_TABLE} WHERE id NOT IN (${deletePlaceholders})`,
+        userIds
+      )
+    }
 
     // Upsert products
     const productRows = db.products.map((p) => [p.id, p.title, p.description, p.price, p.stock, p.category, p.subcategory || null, p.image_url || null, JSON.stringify(p.images || []), p.seller_id, p.seller_name, toMysqlDateTime(p.created_at), toMysqlDateTime(p.updated_at)])
@@ -842,22 +871,69 @@ export const saveDb = async (db: Database) => {
     // Upsert reviews
     const reviewRows = db.reviews.map((r) => [r.id, r.product_id || null, r.seller_id, r.buyer_id, r.buyer_name, r.rating, r.text, r.order_id || null, r.product_title || null, toMysqlDateTime(r.created_at)])
     await batchInsertUpsert(REVIEWS_TABLE, ['id','product_id','seller_id','buyer_id','buyer_name','rating','text','order_id','product_title','created_at'], reviewRows, ['text','rating','product_title'])
+    const reviewIds = db.reviews.map((review) => review.id)
+    if (reviewIds.length === 0) {
+      await connection.query(`DELETE FROM ${REVIEWS_TABLE}`)
+    } else {
+      const deletePlaceholders = reviewIds.map(() => '?').join(',')
+      await connection.query(
+        `DELETE FROM ${REVIEWS_TABLE} WHERE id NOT IN (${deletePlaceholders})`,
+        reviewIds
+      )
+    }
 
     // Upsert orders
     const orderRows = db.orders.map((o) => [o.id, o.product_id || null, o.product_name, o.seller_id, o.seller_name, o.buyer_id, o.buyer_name, o.price, o.quantity, o.status, toMysqlDateTime(o.created_at), o.completed_at ? toMysqlDateTime(o.completed_at) : null, o.dispute_resolution || null, o.dispute_resolved_by || null, o.dispute_resolved_at ? toMysqlDateTime(o.dispute_resolved_at) : null])
     await batchInsertUpsert(ORDERS_TABLE, ['id','product_id','product_name','seller_id','seller_name','buyer_id','buyer_name','price','quantity','status','created_at','completed_at','dispute_resolution','dispute_resolved_by','dispute_resolved_at'], orderRows, ['status','completed_at','dispute_resolution','dispute_resolved_by','dispute_resolved_at'])
+    const orderIds = db.orders.map((order) => order.id)
+    if (orderIds.length === 0) {
+      await connection.query(`DELETE FROM ${ORDERS_TABLE}`)
+    } else {
+      const deletePlaceholders = orderIds.map(() => '?').join(',')
+      await connection.query(
+        `DELETE FROM ${ORDERS_TABLE} WHERE id NOT IN (${deletePlaceholders})`,
+        orderIds
+      )
+    }
 
     // Upsert chats and messages
     const chatRows = db.chats.map((c) => [c.id, c.seller_id, c.seller_name, c.buyer_id, c.buyer_name, c.product_id || null, c.product_name || null, toMysqlDateTime(c.created_at), toMysqlDateTime(c.updated_at)])
     await batchInsertUpsert(CHATS_TABLE, ['id','seller_id','seller_name','buyer_id','buyer_name','product_id','product_name','created_at','updated_at'], chatRows, ['seller_name','buyer_name','product_id','product_name','updated_at'])
+    const chatIds = db.chats.map((chat) => chat.id)
+    if (chatIds.length === 0) {
+      await connection.query(`DELETE FROM ${CHAT_MESSAGES_TABLE}`)
+      await connection.query(`DELETE FROM ${CHATS_TABLE}`)
+    } else {
+      const deletePlaceholders = chatIds.map(() => '?').join(',')
+      await connection.query(
+        `DELETE FROM ${CHAT_MESSAGES_TABLE} WHERE chat_id NOT IN (${deletePlaceholders})`,
+        chatIds
+      )
+      await connection.query(
+        `DELETE FROM ${CHATS_TABLE} WHERE id NOT IN (${deletePlaceholders})`,
+        chatIds
+      )
+    }
 
     const messageRows: any[][] = []
     for (const chat of db.chats) {
       for (const m of chat.messages || []) {
-        messageRows.push([m.id, chat.id, m.sender_id, m.sender_name, m.sender_role || 'user', m.text, toMysqlDateTime(m.timestamp), m.isSystemMessage ? 1 : 0])
+        messageRows.push([
+          m.id,
+          chat.id,
+          m.sender_id,
+          m.sender_name,
+          m.sender_role || 'user',
+          m.text,
+          toMysqlDateTime(m.timestamp),
+          m.isSystemMessage ? 1 : 0,
+          m.attachment_data || null,
+          m.attachment_name || null,
+          m.attachment_mime || null,
+        ])
       }
     }
-    await batchInsertUpsert(CHAT_MESSAGES_TABLE, ['id','chat_id','sender_id','sender_name','sender_role','text','timestamp','is_system_message'], messageRows, ['text','timestamp','is_system_message'])
+    await batchInsertUpsert(CHAT_MESSAGES_TABLE, ['id','chat_id','sender_id','sender_name','sender_role','text','timestamp','is_system_message','attachment_data','attachment_name','attachment_mime'], messageRows, ['text','timestamp','is_system_message','attachment_data','attachment_name','attachment_mime'])
 
     // Upsert carts (assume unique key on user_id+product_id)
     const cartRows: any[][] = []
@@ -868,6 +944,17 @@ export const saveDb = async (db: Database) => {
     }
     if (cartRows.length) {
       await batchInsertUpsert(CARTS_TABLE, ['user_id','product_id','quantity'], cartRows, ['quantity'])
+    }
+    if (!cartRows.length) {
+      await connection.query(`DELETE FROM ${CARTS_TABLE}`)
+    } else {
+      const cartKeys = cartRows.map(([userId, productId]) => [userId, productId])
+      const cartPlaceholders = cartKeys.map(() => '(?,?)').join(',')
+      const cartValues = cartKeys.flat()
+      await connection.query(
+        `DELETE FROM ${CARTS_TABLE} WHERE (user_id, product_id) NOT IN (${cartPlaceholders})`,
+        cartValues
+      )
     }
 
     // Upsert catalog categories (sorted to satisfy parent constraints)

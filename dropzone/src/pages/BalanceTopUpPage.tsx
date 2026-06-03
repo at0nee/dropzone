@@ -84,9 +84,21 @@ const BalanceTopUpPage: React.FC = () => {
       }
     }
 
-    if (paymentMethod === 'paypal' && !paypalEmail.trim()) {
-      showToast('Введіть email для PayPal', 'error')
-      return false
+    if (paymentMethod === 'paypal') {
+      const email = paypalEmail.trim()
+      if (!email) {
+        showToast('Введіть email для PayPal', 'error')
+        return false
+      }
+      const isValid = (() => {
+        // simple but robust email regex
+        const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        return re.test(email)
+      })()
+      if (!isValid) {
+        showToast('Введіть коректний email для PayPal', 'error')
+        return false
+      }
     }
 
     if (paymentMethod === 'crypto' && !cryptoWallet.trim()) {

@@ -113,7 +113,8 @@ const processPersistQueue = async () => {
 
 // Setup CORS and JSON parsing
 app.use(cors({ origin: true, credentials: true }))
-app.use(express.json())
+app.use(express.json({ limit: '10mb' }))
+app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 // Serve frontend static files (React dist) from root
 const distPath = path.join(__dirname, '..', '..', 'dropzone', 'dist')
@@ -1492,7 +1493,10 @@ app.post('/admin/disputes/:id/messages', asyncHandler(async (req, res) => {
   if (!order) return fail(res, 404, 'Order not found')
 
   const text = normalizeText(req.body?.text)
-  if (!text) return fail(res, 400, 'Message text is required')
+  const attachmentData = normalizeText(req.body?.attachment_data)
+  const attachmentName = normalizeText(req.body?.attachment_name)
+  const attachmentMime = normalizeText(req.body?.attachment_mime)
+  if (!text && !attachmentData) return fail(res, 400, 'Message text or attachment is required')
 
   console.log(`📨 POST /admin/disputes/:id/messages: user=${resolver.username} order=${order.id} seller=${order.seller_id} buyer=${order.buyer_id}`)
 
@@ -1523,6 +1527,9 @@ app.post('/admin/disputes/:id/messages', asyncHandler(async (req, res) => {
       text,
       timestamp: now,
       isSystemMessage: false,
+      attachment_data: attachmentData || undefined,
+      attachment_name: attachmentName || undefined,
+      attachment_mime: attachmentMime || undefined,
     }
     thread.messages.push(message)
     thread.updated_at = now
@@ -1538,6 +1545,9 @@ app.post('/admin/disputes/:id/messages', asyncHandler(async (req, res) => {
         text,
         timestamp: now,
         isSystemMessage: false,
+        attachment_data: attachmentData || undefined,
+        attachment_name: attachmentName || undefined,
+        attachment_mime: attachmentMime || undefined,
       }
       thread.messages.push(message)
       thread.updated_at = now
@@ -1825,7 +1835,10 @@ app.post('/chat/threads/:id/messages', asyncHandler(async (req, res) => {
   }
 
   const text = normalizeText(req.body?.text)
-  if (!text) return fail(res, 400, 'Message text is required')
+  const attachmentData = normalizeText(req.body?.attachment_data)
+  const attachmentName = normalizeText(req.body?.attachment_name)
+  const attachmentMime = normalizeText(req.body?.attachment_mime)
+  if (!text && !attachmentData) return fail(res, 400, 'Message text or attachment is required')
 
   const message: ChatMessage = {
     id: generateId('msg'),
@@ -1835,6 +1848,9 @@ app.post('/chat/threads/:id/messages', asyncHandler(async (req, res) => {
     text,
     timestamp: new Date().toISOString(),
     isSystemMessage: Boolean(req.body?.isSystemMessage),
+    attachment_data: attachmentData || undefined,
+    attachment_name: attachmentName || undefined,
+    attachment_mime: attachmentMime || undefined,
   }
   thread.messages.push(message)
   thread.updated_at = message.timestamp

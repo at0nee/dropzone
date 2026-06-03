@@ -51,6 +51,12 @@ export const saveStoredUsers = (users: User[]) => {
   localStorage.setItem(USERS_KEY, JSON.stringify(users))
 }
 
+export const deleteStoredUser = (userId: string) => {
+  const users = getStoredUsers().filter((user) => user.id !== userId)
+  saveStoredUsers(users)
+  return users
+}
+
 export const findStoredUserById = (userId: string) => {
   return getStoredUsers().find((user) => user.id === userId)
 }
@@ -202,6 +208,9 @@ export const appendChatMessageToSellerThread = (
     text: string
     sender_role?: UserRole | 'system'
     isSystemMessage?: boolean
+    attachment_data?: string
+    attachment_name?: string
+    attachment_mime?: string
   }
 ) => {
   const chats = getStoredChats()

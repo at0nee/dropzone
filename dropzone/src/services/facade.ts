@@ -195,6 +195,9 @@ export const sendMessageToSeller = async (sellerId: string, message: any) => {
       sender_name: message?.sender_name,
       sender_role: message?.sender_role,
       isSystemMessage: message?.isSystemMessage,
+      attachment_data: message?.attachment_data,
+      attachment_name: message?.attachment_name,
+      attachment_mime: message?.attachment_mime,
     }
 
     const response = await chatService.sendMessage(thread.id, payload)

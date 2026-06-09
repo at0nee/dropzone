@@ -100,6 +100,16 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
     })
   }
 
+  const handleWithdraw = () => {
+    const amount = Number(topUpAmount)
+    setBalanceMenuOpen(false)
+    navigate('/balance/withdraw', {
+      state: {
+        amount: Number.isFinite(amount) && amount > 0 ? amount : undefined,
+      },
+    })
+  }
+
   const getReadStateKey = () => `chat-read-state:${user?.id || 'guest'}`
 
   const readChatState = (): Record<string, string> => {
@@ -317,6 +327,9 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                         <button className="topup-btn" onClick={handleTopUp}>
                           Поповнити баланс
                         </button>
+                        <button className="topup-btn" onClick={handleWithdraw}>
+                          Вивести з балансу
+                        </button>
                       </div>
                     </div>
                   )}
@@ -337,6 +350,9 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                     <div className="user-menu">
                       <Link to="/profile" className="user-menu-item">
                         <Settings size={18} /> Профіль
+                      </Link>
+                      <Link to="/balance/history" className="user-menu-item">
+                        <Wallet size={18} /> Історія балансу
                       </Link>
                       {canAccessAdminPanel(user?.role) && (
                         <Link to="/admin" className="user-menu-item">
@@ -385,8 +401,8 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
                 <button onClick={() => handleNavClick('/profile')} className="mobile-nav-item">
                   <User size={20} /> Профіль
                 </button>
-                <button onClick={() => handleNavClick('/settings')} className="mobile-nav-item">
-                  <Settings size={20} /> Налаштування
+                <button onClick={() => handleNavClick('/balance/history')} className="mobile-nav-item">
+                  <Wallet size={20} /> Історія балансу
                 </button>
                 <button onClick={handleLogout} className="mobile-nav-item logout">
                   <LogOut size={20} /> Вийти ({userBalance}₴)

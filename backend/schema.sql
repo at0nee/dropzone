@@ -121,3 +121,37 @@ CREATE TABLE IF NOT EXISTS catalog_categories (
   updated_at DATETIME NOT NULL,
   CONSTRAINT fk_catalog_categories_parent FOREIGN KEY (parent_id) REFERENCES catalog_categories(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS balance_transactions (
+  id VARCHAR(64) PRIMARY KEY,
+  user_id VARCHAR(64) NOT NULL,
+  amount DECIMAL(14,2) NOT NULL,
+  balance_before DECIMAL(14,2) NOT NULL,
+  balance_after DECIMAL(14,2) NOT NULL,
+  type VARCHAR(64) NOT NULL,
+  reason VARCHAR(255) NOT NULL,
+  related_order_id VARCHAR(64) NULL,
+  related_product_id VARCHAR(64) NULL,
+  actor_user_id VARCHAR(64) NULL,
+  created_at DATETIME NOT NULL,
+  CONSTRAINT fk_balance_transactions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS withdrawal_requests (
+  id VARCHAR(64) PRIMARY KEY,
+  user_id VARCHAR(64) NOT NULL,
+  amount_gross DECIMAL(14,2) NOT NULL,
+  fee_percent DECIMAL(5,2) NOT NULL,
+  fee_amount DECIMAL(14,2) NOT NULL,
+  amount_net DECIMAL(14,2) NOT NULL,
+  method VARCHAR(32) NOT NULL,
+  destination VARCHAR(255) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  current_balance_after DECIMAL(14,2) NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  processed_at DATETIME NULL,
+  processed_by VARCHAR(64) NULL,
+  admin_note VARCHAR(255) NULL,
+  CONSTRAINT fk_withdrawal_requests_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);

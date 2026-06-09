@@ -24,6 +24,7 @@ import {
   type Review,
   type Role,
   type User,
+  type BalanceTransaction,
 } from './db'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -67,6 +68,8 @@ type Snapshot = {
   chats: any[]
   carts: Record<string, any[]>
   catalog_categories: any[]
+  balance_transactions: any[]
+  withdrawal_requests: any[]
 }
 
 const persistQueue: Snapshot[] = []
@@ -94,6 +97,8 @@ const processPersistQueue = async () => {
           chats: snap.chats,
           carts: snap.carts,
           catalog_categories: snap.catalog_categories,
+          balance_transactions: snap.balance_transactions,
+          withdrawal_requests: snap.withdrawal_requests,
         } as any)
         // Invalidate products cache after persistence
         try { clearProductsCache() } catch (e) { /* ignore */ }
@@ -192,6 +197,57 @@ const requireRole = (db: Database, req: Request, res: Response, roles: Role[]) =
 const asNumber = (value: unknown, fallback = 0) => {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : fallback
+}
+
+const formatMoney = (value: number) => `${value > 0 ? '+' : ''}${value.toFixed(2)} ₴`
+
+const addBalanceTransaction = (
+  db: Database,
+  userId: string,
+  amount: number,
+  type: BalanceTransaction['type'],
+  reason: string,
+  options?: {
+    relatedOrderId?: string
+    relatedProductId?: string
+    actorUserId?: string
+    createdAt?: string
+  }
+) => {
+  const target = db.users.find((item) => item.id === userId)
+  if (!target) return null
+
+  const before = Number(target.balance || 0)
+  const after = before + amount
+  target.balance = after
+  target.updated_at = options?.createdAt || new Date().toISOString()
+
+  const tx: BalanceTransaction = {
+    id: generateId('bal'),
+    user_id: userId,
+    amount,
+    balance_before: before,
+    balance_after: after,
+    type,
+    reason,
+    related_order_id: options?.relatedOrderId,
+    related_product_id: options?.relatedProductId,
+    actor_user_id: options?.actorUserId,
+    created_at: options?.createdAt || new Date().toISOString(),
+  }
+
+  db.balance_transactions.unshift(tx)
+  return tx
+}
+
+const WITHDRAWAL_FEE_PERCENT = 5
+const MIN_WITHDRAWAL_AMOUNT = 300
+
+const calcWithdrawalBreakdown = (amount: number) => {
+  const gross = Number(amount.toFixed(2))
+  const feeAmount = Number((gross * (WITHDRAWAL_FEE_PERCENT / 100)).toFixed(2))
+  const net = Number((gross - feeAmount).toFixed(2))
+  return { gross, feeAmount, net }
 }
 
 const normalizeText = (value: unknown) => String(value || '').trim()
@@ -603,9 +659,14 @@ app.post('/auth/register', asyncHandler(async (req, res) => {
   const email = normalizeText(req.body?.email)
   const password = normalizeText(req.body?.password)
   const username = normalizeText(req.body?.username || req.body?.name)
+  const acceptedRules = Boolean(req.body?.accepted_rules)
 
   if (!email || !password || !username) {
     return fail(res, 400, 'Validation error', ['email, password, username are required'])
+  }
+
+  if (!acceptedRules) {
+    return fail(res, 400, 'Please accept the site rules')
   }
 
   if (username.length > MAX_USERNAME_LENGTH) {
@@ -1088,6 +1149,25 @@ app.post('/reviews', asyncHandler(async (req, res) => {
   send(res, review, 201)
 }))
 
+app.delete('/reviews/:id', asyncHandler(async (req, res) => {
+  const db = await ensureDb()
+  const user = requireRole(db, req, res, ['admin', 'support'])
+  if (!user) return
+
+  const reviewId = normalizeText(req.params.id)
+  const index = db.reviews.findIndex((item) => item.id === reviewId)
+  if (index === -1) return fail(res, 404, 'Review not found')
+
+  const target = db.reviews[index]
+  db.reviews.splice(index, 1)
+
+  // Keep seller profile stats in sync after moderation delete.
+  calculateSellerStats(db, target.seller_id)
+
+  await saveDb(db)
+  send(res, { deleted: true })
+}))
+
 app.get('/users', asyncHandler(async (req, res) => {
   const db = await ensureDb()
   const user = requireRole(db, req, res, ['admin'])
@@ -1142,7 +1222,25 @@ app.put('/users/:id', asyncHandler(async (req, res) => {
     if (existing) return fail(res, 409, 'Email already in use')
     target.email = nextEmail
   }
-  if (typeof payload.balance !== 'undefined') target.balance = asNumber(payload.balance, target.balance)
+  if (typeof payload.balance !== 'undefined') {
+    const nextBalance = asNumber(payload.balance, target.balance)
+    const delta = nextBalance - Number(target.balance || 0)
+    if (Math.abs(delta) > 0.000001) {
+      const isSelfTopup = current.id === target.id && delta > 0
+      const paymentMethod = normalizeText(payload?.balance_meta?.method || '').toLowerCase()
+      const methodLabel = paymentMethod ? ` (${paymentMethod.toUpperCase()})` : ''
+      addBalanceTransaction(
+        db,
+        target.id,
+        delta,
+        isSelfTopup ? 'topup' : 'admin_adjustment',
+        isSelfTopup
+          ? `Поповнення балансу${methodLabel} (${formatMoney(delta)})`
+          : `Ручне коригування балансу адміністратором (${formatMoney(delta)})`,
+        { actorUserId: current.id }
+      )
+    }
+  }
   if (current.role === 'admin' && typeof payload.role === 'string') target.role = payload.role as Role
   if (typeof payload.new_password === 'string' && payload.new_password.trim().length > 0) {
     if (payload.new_password.trim().length < 6) return fail(res, 400, 'Validation error', ['new_password must be at least 6 characters'])
@@ -1182,6 +1280,12 @@ app.delete('/users/:id', asyncHandler(async (req, res) => {
 
   // Delete user's reviews (written by them or about their products)
   db.reviews = db.reviews.filter((r) => r.buyer_id !== targetUserId && r.seller_id !== targetUserId)
+
+  // Delete user's balance transactions
+  db.balance_transactions = db.balance_transactions.filter((tx) => tx.user_id !== targetUserId && tx.actor_user_id !== targetUserId)
+
+  // Delete user's withdrawal requests
+  db.withdrawal_requests = db.withdrawal_requests.filter((request) => request.user_id !== targetUserId && request.processed_by !== targetUserId)
 
   // Remove user from carts of other users
   Object.keys(db.carts).forEach((userId) => {
@@ -1276,8 +1380,15 @@ app.post('/cart/checkout', asyncHandler(async (req, res) => {
     // Decrease product stock
     product.stock = Math.max(0, (product.stock || 0) - (item.quantity || 1))
     
-    // Escrow: deduct money from buyer (held in system, not given to seller yet)
-    user.balance -= order.price
+    // Deduct money from buyer for the order
+    addBalanceTransaction(
+      db,
+      user.id,
+      -order.price,
+      'purchase_hold',
+      `Списання за товар ${order.product_name}`,
+      { relatedOrderId: order.id, relatedProductId: order.product_id || undefined, actorUserId: user.id }
+    )
     console.log(`💰 Escrow: deducted ${order.price} from buyer=${user.id}, balance=${user.balance}`)
     
     // Create chat thread and attach system message
@@ -1351,8 +1462,15 @@ app.post('/orders', asyncHandler(async (req, res) => {
 
   db.orders.unshift(order)
   
-  // Escrow: deduct money from buyer (held in system, not given to seller yet)
-  user.balance -= order.price
+  // Deduct money from buyer for the order
+  addBalanceTransaction(
+    db,
+    user.id,
+    -order.price,
+    'purchase_hold',
+    `Списання за товар ${order.product_name}`,
+    { relatedOrderId: order.id, relatedProductId: order.product_id || undefined, actorUserId: user.id }
+  )
   console.log(`💰 Escrow: deducted ${order.price} from buyer=${user.id}, balance=${user.balance}`)
   
   // Create chat thread and attach system message
@@ -1373,6 +1491,246 @@ app.get('/orders/:id', asyncHandler(async (req, res) => {
   if (!order) return fail(res, 404, 'Order not found')
   if (user.role !== 'admin' && user.id !== order.buyer_id && user.id !== order.seller_id) return fail(res, 403, 'Forbidden')
   send(res, order)
+}))
+
+app.get('/balance/transactions', asyncHandler(async (req, res) => {
+  const db = await ensureDb()
+  const user = requireAuth(db, req, res)
+  if (!user) return
+
+  const page = Math.max(1, asNumber(req.query.page, 1))
+  const pageSize = Math.min(200, Math.max(1, asNumber(req.query.pageSize, 50)))
+  const fromRaw = normalizeText(req.query.from)
+  const toRaw = normalizeText(req.query.to)
+  const fromDate = fromRaw ? new Date(fromRaw) : null
+  const toDate = toRaw ? new Date(`${toRaw}T23:59:59.999Z`) : null
+
+  const own = db.balance_transactions.filter((tx) => {
+    if (tx.user_id !== user.id) return false
+    const createdAt = new Date(tx.created_at)
+    if (fromDate && !Number.isNaN(fromDate.getTime()) && createdAt < fromDate) return false
+    if (toDate && !Number.isNaN(toDate.getTime()) && createdAt > toDate) return false
+    return true
+  })
+  const total = own.length
+  const start = (page - 1) * pageSize
+  const items = own.slice(start, start + pageSize)
+
+  const totalIn = own.filter((tx) => tx.amount > 0).reduce((sum, tx) => sum + tx.amount, 0)
+  const totalOut = own.filter((tx) => tx.amount < 0).reduce((sum, tx) => sum + Math.abs(tx.amount), 0)
+
+  send(res, {
+    items,
+    total,
+    page,
+    pageSize,
+    summary: {
+      totalIn,
+      totalOut,
+      net: totalIn - totalOut,
+      currentBalance: Number(user.balance || 0),
+    },
+  })
+}))
+
+app.get('/balance/transactions/chart', asyncHandler(async (req, res) => {
+  const db = await ensureDb()
+  const user = requireAuth(db, req, res)
+  if (!user) return
+
+  const fromRaw = normalizeText(req.query.from)
+  const toRaw = normalizeText(req.query.to)
+  const fromDate = fromRaw ? new Date(fromRaw) : null
+  const toDate = toRaw ? new Date(`${toRaw}T23:59:59.999Z`) : null
+
+  const own = db.balance_transactions.filter((tx) => {
+    if (tx.user_id !== user.id) return false
+    const createdAt = new Date(tx.created_at)
+    if (fromDate && !Number.isNaN(fromDate.getTime()) && createdAt < fromDate) return false
+    if (toDate && !Number.isNaN(toDate.getTime()) && createdAt > toDate) return false
+    return true
+  })
+
+  const byDay = new Map<string, { date: string; totalIn: number; totalOut: number }>()
+  for (const tx of own) {
+    const day = new Date(tx.created_at).toISOString().slice(0, 10)
+    const bucket = byDay.get(day) || { date: day, totalIn: 0, totalOut: 0 }
+    if (tx.amount > 0) bucket.totalIn += tx.amount
+    if (tx.amount < 0) bucket.totalOut += Math.abs(tx.amount)
+    byDay.set(day, bucket)
+  }
+
+  const minDate = fromDate && !Number.isNaN(fromDate.getTime())
+    ? new Date(fromDate)
+    : own.length > 0
+      ? new Date(`${own[own.length - 1].created_at.slice(0, 10)}T00:00:00.000Z`)
+      : new Date()
+  const maxDate = toDate && !Number.isNaN(toDate.getTime())
+    ? new Date(toDate)
+    : new Date()
+
+  const start = new Date(Date.UTC(minDate.getUTCFullYear(), minDate.getUTCMonth(), minDate.getUTCDate()))
+  const end = new Date(Date.UTC(maxDate.getUTCFullYear(), maxDate.getUTCMonth(), maxDate.getUTCDate()))
+
+  const chart = [] as Array<{ date: string; totalIn: number; totalOut: number; net: number }>
+  for (let cursor = new Date(start); cursor.getTime() <= end.getTime(); cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+    const key = cursor.toISOString().slice(0, 10)
+    const row = byDay.get(key) || { date: key, totalIn: 0, totalOut: 0 }
+    chart.push({
+      date: key,
+      totalIn: Number(row.totalIn.toFixed(2)),
+      totalOut: Number(row.totalOut.toFixed(2)),
+      net: Number((row.totalIn - row.totalOut).toFixed(2)),
+    })
+  }
+
+  send(res, { items: chart })
+}))
+
+app.get('/balance/withdrawals', asyncHandler(async (req, res) => {
+  const db = await ensureDb()
+  const user = requireAuth(db, req, res)
+  if (!user) return
+
+  const own = db.withdrawal_requests.filter((request) => request.user_id === user.id)
+  send(res, own)
+}))
+
+app.post('/balance/withdrawals', asyncHandler(async (req, res) => {
+  const db = await ensureDb()
+  const user = requireAuth(db, req, res)
+  if (!user) return
+
+  const amount = asNumber(req.body?.amount, 0)
+  const method = normalizeText(req.body?.method).toLowerCase()
+  const destination = normalizeText(req.body?.destination)
+  const currentPassword = normalizeText(req.body?.current_password)
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return fail(res, 400, 'Validation error', ['amount must be greater than 0'])
+  }
+  if (amount < MIN_WITHDRAWAL_AMOUNT) {
+    return fail(res, 400, `Мінімальна сума виводу ${MIN_WITHDRAWAL_AMOUNT} ₴`)
+  }
+  if (!['paypal', 'card', 'usdt_trc20'].includes(method)) {
+    return fail(res, 400, 'Validation error', ['method must be paypal, card or usdt_trc20'])
+  }
+  if (!destination) {
+    return fail(res, 400, 'Validation error', ['destination is required'])
+  }
+  if (!currentPassword) {
+    return fail(res, 400, 'Validation error', ['current_password is required'])
+  }
+  if (user.passwordHash !== hashPassword(currentPassword)) {
+    return fail(res, 401, 'Invalid current password')
+  }
+
+  const roundedAmount = Number(amount.toFixed(2))
+  if (roundedAmount > Number(user.balance || 0)) {
+    return fail(res, 400, 'Insufficient balance')
+  }
+
+  const { gross, feeAmount, net } = calcWithdrawalBreakdown(roundedAmount)
+  const now = new Date().toISOString()
+
+  const tx = addBalanceTransaction(
+    db,
+    user.id,
+    -gross,
+    'withdrawal_request',
+    `Заявка на вивід ${gross.toFixed(2)} ₴ (${method.toUpperCase()}, комісія ${WITHDRAWAL_FEE_PERCENT}%)`,
+    { actorUserId: user.id, createdAt: now }
+  )
+
+  const request = {
+    id: generateId('wd'),
+    user_id: user.id,
+    amount_gross: gross,
+    fee_percent: WITHDRAWAL_FEE_PERCENT,
+    fee_amount: feeAmount,
+    amount_net: net,
+    method: method as 'paypal' | 'card' | 'usdt_trc20',
+    destination,
+    status: 'pending' as const,
+    current_balance_after: tx ? Number(tx.balance_after || 0) : Number(user.balance || 0),
+    created_at: now,
+    updated_at: now,
+  }
+
+  db.withdrawal_requests.unshift(request)
+  await saveDb(db)
+  send(res, { request, user: publicUser(user) }, 201)
+}))
+
+app.get('/admin/withdrawals', asyncHandler(async (req, res) => {
+  const db = await ensureDb()
+  const admin = requireRole(db, req, res, ['admin'])
+  if (!admin) return
+
+  const payload = db.withdrawal_requests.map((request) => {
+    const owner = db.users.find((item) => item.id === request.user_id)
+    const processor = request.processed_by ? db.users.find((item) => item.id === request.processed_by) : null
+    return {
+      ...request,
+      user: owner ? publicUser(owner) : null,
+      processed_by_user: processor ? publicUser(processor) : null,
+    }
+  })
+
+  send(res, payload)
+}))
+
+app.post('/admin/withdrawals/:id/complete', asyncHandler(async (req, res) => {
+  const db = await ensureDb()
+  const admin = requireRole(db, req, res, ['admin'])
+  if (!admin) return
+
+  const request = db.withdrawal_requests.find((item) => item.id === req.params.id)
+  if (!request) return fail(res, 404, 'Withdrawal request not found')
+  if (request.status !== 'pending') return fail(res, 409, 'Request already processed')
+
+  const now = new Date().toISOString()
+  request.status = 'completed'
+  request.processed_at = now
+  request.processed_by = admin.id
+  request.updated_at = now
+  request.admin_note = normalizeText(req.body?.admin_note) || request.admin_note
+
+  await saveDb(db)
+  send(res, { request })
+}))
+
+app.post('/admin/withdrawals/:id/refund', asyncHandler(async (req, res) => {
+  const db = await ensureDb()
+  const admin = requireRole(db, req, res, ['admin'])
+  if (!admin) return
+
+  const request = db.withdrawal_requests.find((item) => item.id === req.params.id)
+  if (!request) return fail(res, 404, 'Withdrawal request not found')
+  if (request.status === 'refunded') return fail(res, 409, 'Request already refunded')
+  if (request.status !== 'pending') return fail(res, 409, 'Only pending withdrawals can be refunded')
+
+  const owner = db.users.find((item) => item.id === request.user_id)
+  if (!owner) return fail(res, 404, 'User not found')
+
+  const now = new Date().toISOString()
+  addBalanceTransaction(
+    db,
+    owner.id,
+    Number(request.amount_gross || 0),
+    'admin_adjustment',
+    `Повернення коштів за заявкою на вивід ${request.id}`,
+    { actorUserId: admin.id, createdAt: now }
+  )
+
+  request.status = 'refunded'
+  request.processed_at = now
+  request.processed_by = admin.id
+  request.updated_at = now
+  request.admin_note = normalizeText(req.body?.admin_note) || request.admin_note
+
+  await saveDb(db)
+  send(res, { request, user: publicUser(owner) })
 }))
 
 app.put('/orders/:id/status', asyncHandler(async (req, res) => {
@@ -1398,13 +1756,19 @@ app.put('/orders/:id/status', asyncHandler(async (req, res) => {
   if (status === 'completed') {
     order.completed_at = new Date().toISOString()
     
-    // Escrow: transfer money from held escrow to seller
-    // (money already deducted from buyer when order was created)
+    // Transfer funds to seller after order completion
     const seller = db.users.find((u) => u.id === order.seller_id)
-    
+
     if (seller) {
-      seller.balance += order.price
-      console.log(`💰 Order completed: escrow released to seller=${order.seller_id} balance=${seller.balance}`)
+      addBalanceTransaction(
+        db,
+        seller.id,
+        order.price,
+        'order_payout',
+        `Виплата продавцю за завершене замовлення ${order.product_name}`,
+        { relatedOrderId: order.id, relatedProductId: order.product_id || undefined, actorUserId: user.id }
+      )
+      console.log(`💰 Order completed: payment released to seller=${order.seller_id} balance=${seller.balance}`)
     }
     // Add system message about order confirmation
     const product = db.products.find((p) => p.id === order.product_id)
@@ -1414,8 +1778,8 @@ app.put('/orders/:id/status', asyncHandler(async (req, res) => {
       console.log(`ℹ️ Order completion message added to chat thread ${thread.id}`)
     }
   } else if (status === 'disputed') {
-    // Dispute opened by user - money stays held (escrow)
-    // Only support/admin can resolve dispute and release/refund money
+    // Dispute opened by user - funds remain blocked until resolution
+    // Only support/admin can resolve the dispute and release/refund money
     
     // Add system message to chat about dispute
     const product = db.products.find((p) => p.id === order.product_id)
@@ -1576,10 +1940,28 @@ app.post('/admin/disputes/:id/resolve', asyncHandler(async (req, res) => {
   const now = new Date().toISOString()
 
   if (resolution === 'refund') {
-    if (buyer) buyer.balance += amount
+    if (buyer) {
+      addBalanceTransaction(
+        db,
+        buyer.id,
+        amount,
+        'dispute_refund',
+        `Повернення коштів по спору за замовлення ${order.product_name}`,
+        { relatedOrderId: order.id, relatedProductId: order.product_id || undefined, actorUserId: resolver.id, createdAt: now }
+      )
+    }
     order.status = 'refunded'
   } else {
-    if (seller) seller.balance += amount
+    if (seller) {
+      addBalanceTransaction(
+        db,
+        seller.id,
+        amount,
+        'dispute_seller_payout',
+        `Виплата продавцю по спору за замовлення ${order.product_name}`,
+        { relatedOrderId: order.id, relatedProductId: order.product_id || undefined, actorUserId: resolver.id, createdAt: now }
+      )
+    }
     order.status = 'completed'
     order.completed_at = order.completed_at || now
   }
@@ -1730,6 +2112,8 @@ app.post('/admin/db-seed/generate', asyncHandler(async (req, res) => {
           chats: db2.chats,
           carts: db2.carts,
           catalog_categories: db2.catalog_categories,
+          balance_transactions: db2.balance_transactions,
+          withdrawal_requests: db2.withdrawal_requests,
         })
       }
 

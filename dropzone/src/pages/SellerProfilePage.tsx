@@ -57,7 +57,7 @@ const SellerProfilePage: React.FC = () => {
 
         // Load reviews
         const sellerReviews = await facade.getReviewsBySeller(sellerId!)
-        setReviews(sellerReviews || [])
+        setReviews(Array.isArray(sellerReviews) ? sellerReviews : sellerReviews?.data || [])
       } catch (error) {
         console.error('Failed to load seller data:', error)
       } finally {

@@ -181,35 +181,25 @@
   color: var(--accent-primary);
 }
 
-.chat-btn.has-unread {
-  color: var(--accent-primary);
-}
-
 .chat-unread-badge {
   position: absolute;
   top: -4px;
-  right: -4px;
+  right: -6px;
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
   border-radius: 999px;
-  background: #ff4d4f;
-  color: #fff;
-  font-size: 0.65rem;
+  background: #ef4444;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  font-size: 0.68rem;
   font-weight: 700;
-  line-height: 18px;
-  text-align: center;
-  box-shadow: 0 6px 16px rgba(255, 77, 79, 0.35);
-  animation: unreadPulse 1.6s ease-in-out infinite;
-}
-
-@keyframes unreadPulse {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.08);
-  }
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.45);
 }
 
 /* Desktop Auth - Balance Container */

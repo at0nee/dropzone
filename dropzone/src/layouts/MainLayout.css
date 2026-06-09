@@ -2,9 +2,8 @@
 .main-layout {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-height: 100vh;
   background-color: var(--bg-primary);
-  overflow: hidden;
 }
 
 .main-content {
@@ -19,6 +18,43 @@
   padding: 0;
 }
 
+.site-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--bg-primary);
+}
+
+.site-footer-inner {
+  min-height: 48px;
+  padding: 0.55rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+  text-align: center;
+}
+
+.footer-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.footer-link:hover {
+  color: var(--text-primary);
+}
+
+.footer-dot {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.footer-copy {
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
 @media (max-width: 768px) {
   .main-content {
     padding: 16px;
@@ -26,5 +62,11 @@
 
   .main-content.chat-route {
     padding: 0;
+  }
+
+  .site-footer-inner {
+    gap: 0.45rem;
+    font-size: 0.86rem;
+    padding: 0.6rem 0.75rem;
   }
 }

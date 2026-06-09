@@ -11,7 +11,7 @@ interface AuthStore {
   error: string | null
   isAuthenticated: boolean
   login: (credentials: AuthCredentials) => Promise<boolean>
-  register: (email: string, password: string, username: string) => Promise<boolean>
+  register: (email: string, password: string, username: string, acceptedRules: boolean) => Promise<boolean>
   
   logout: () => void
   clearError: () => void
@@ -56,11 +56,11 @@ export const useAuthStore = create<AuthStore>((set) => ({
     }
   },
 
-  register: async (email: string, password: string, username: string) => {
+  register: async (email: string, password: string, username: string, acceptedRules: boolean) => {
     set({ isLoading: true, error: null })
     try {
       clearUserData()
-      const response = await authService.register(email, password, username)
+      const response = await authService.register(email, password, username, acceptedRules)
       if (response.data.success && response.data.data) {
         localStorage.setItem('auth_token', response.data.data.token)
         setStoredAuthUser(response.data.data.user)

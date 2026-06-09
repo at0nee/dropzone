@@ -115,7 +115,13 @@ const BalanceTopUpPage: React.FC = () => {
     const nextBalance = Number(user.balance || 0) + amount
 
     try {
-      const response = await userService.update(user.id, { balance: nextBalance })
+      const response = await userService.update(user.id, {
+        balance: nextBalance,
+        balance_meta: {
+          source: 'topup_page',
+          method: paymentMethod,
+        },
+      })
       const updatedUser = response?.data?.data || { ...user, balance: nextBalance }
       setUser(updatedUser)
     } catch {

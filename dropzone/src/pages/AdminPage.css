@@ -297,6 +297,49 @@
   box-shadow: 0 18px 45px rgba(0, 0, 0, 0.18);
 }
 
+.reviews-moderation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.review-moderation-card {
+  border: 1px solid rgba(0, 212, 255, 0.16);
+  background: rgba(0, 212, 255, 0.05);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+}
+
+.review-moderation-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.review-moderation-head strong {
+  display: block;
+}
+
+.review-moderation-head small {
+  color: var(--text-secondary);
+}
+
+.review-moderation-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  margin-top: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+}
+
+.review-moderation-text {
+  margin: 0.65rem 0 0;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+
 .section-head {
   display: flex;
   justify-content: space-between;
@@ -814,6 +857,165 @@ input[type=number] {
 .products-table {
   display: grid;
   gap: 0.75rem;
+}
+
+.withdrawals-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.withdrawal-card {
+  background: linear-gradient(135deg, rgba(8, 15, 38, 0.92), rgba(5, 12, 30, 0.96));
+  border: 1px solid rgba(0, 212, 255, 0.14);
+  border-radius: 16px;
+  padding: 1rem 1.1rem;
+  display: grid;
+  gap: 0.9rem;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.18);
+}
+
+.withdrawal-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.withdrawal-card-head strong {
+  font-size: 1rem;
+}
+
+.withdrawal-card-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.withdrawal-card-grid div,
+.withdrawal-modal-grid div,
+.withdrawal-modal-details > div {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 0.8rem 0.85rem;
+}
+
+.withdrawal-card-grid small,
+.withdrawal-modal-grid small,
+.withdrawal-modal-details small {
+  display: block;
+  color: var(--text-secondary);
+  margin-bottom: 0.35rem;
+}
+
+.withdrawal-card-grid strong,
+.withdrawal-modal-grid strong,
+.withdrawal-modal-details p {
+  color: var(--text-primary);
+}
+
+.withdrawal-card-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.withdrawal-modal {
+  width: min(680px, 100%);
+}
+
+.withdrawal-modal-user {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 1rem !important;
+}
+
+.withdrawal-modal-user strong {
+  font-size: 1.05rem;
+}
+
+.withdrawal-modal-user span {
+  color: var(--text-secondary);
+}
+
+.withdrawal-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.withdrawal-modal-details {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.withdrawal-modal-details p {
+  margin: 0;
+  word-break: break-word;
+}
+
+.withdrawal-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.withdraw-status {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.withdraw-status.pending {
+  background: rgba(0, 212, 255, 0.12);
+  color: var(--accent-primary);
+  border-color: rgba(0, 212, 255, 0.18);
+}
+
+.withdraw-status.completed {
+  background: rgba(40, 212, 126, 0.14);
+  color: #28d47e;
+  border-color: rgba(40, 212, 126, 0.22);
+}
+
+.withdraw-status.refunded {
+  background: rgba(255, 107, 107, 0.12);
+  color: #ff8b8b;
+  border-color: rgba(255, 107, 107, 0.18);
+}
+
+.withdraw-status.rejected {
+  background: rgba(255, 184, 0, 0.12);
+  color: #ffd873;
+  border-color: rgba(255, 184, 0, 0.18);
+}
+
+.withdraw-destination {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-complete-withdraw {
+  border: 1px solid rgba(0, 212, 255, 0.22);
+  background: rgba(0, 212, 255, 0.12);
+  color: var(--accent-primary);
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-complete-withdraw:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 
 .products-table-head,
@@ -1513,6 +1715,10 @@ input[type=number] {
     grid-template-columns: 1fr;
   }
 
+  .withdrawal-card-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .users-table-head,
   .users-table-row {
     grid-template-columns: 1fr 1fr;
@@ -1549,6 +1755,17 @@ input[type=number] {
   .users-table-row span:nth-child(n),
   .users-table-row div:nth-child(n) {
     grid-column: auto;
+  }
+
+  .withdrawal-card-grid,
+  .withdrawal-modal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .withdrawal-card-head,
+  .withdrawal-modal-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 

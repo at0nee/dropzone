@@ -14,6 +14,9 @@ import ChatPage from './pages/ChatPage'
 import OrdersPage from './pages/OrdersPage'
 import SellerProfilePage from './pages/SellerProfilePage'
 import BalanceTopUpPage from './pages/BalanceTopUpPage'
+import BalanceHistoryPage from './pages/BalanceHistoryPage'
+import BalanceWithdrawPage from './pages/BalanceWithdrawPage'
+import RulesPage from './pages/RulesPage'
 import RoleRoute from './components/RoleRoute'
 
 function App() {
@@ -28,6 +31,7 @@ function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/rules" element={<RulesPage />} />
           <Route
             path="/admin"
             element={
@@ -46,6 +50,8 @@ function App() {
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:sellerId" element={<ChatPage />} />
             <Route path="/balance/topup" element={<BalanceTopUpPage />} />
+            <Route path="/balance/withdraw" element={<BalanceWithdrawPage />} />
+            <Route path="/balance/history" element={<BalanceHistoryPage />} />
             <Route path="/create-product" element={<CreateProductPage />} />
             <Route path="/create-product/:productId" element={<CreateProductPage />} />
             <Route path="/seller/:sellerId" element={<SellerProfilePage />} />

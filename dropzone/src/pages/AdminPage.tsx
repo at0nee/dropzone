@@ -1,17 +1,18 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import VirtualList from '../components/VirtualList/VirtualList'
-import { ArrowLeft, CheckCircle2, MessageCircle, Shield, Users, AlertTriangle, RefreshCw, Search, BadgeInfo, Trash2, Coins, X } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, MessageCircle, Shield, Users, AlertTriangle, RefreshCw, Search, BadgeInfo, Trash2, Coins, X, Eye } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { User, UserRole, CatalogCategory } from '../types'
-import { appendChatMessageToSellerThread, findStoredUserById, getStoredChats, getStoredOrders, getStoredUsers, resolveDispute, updateStoredUserRole, getStoredProducts, saveStoredProducts, saveStoredUsers, getAdminLogs, appendAdminLog, clearAdminLogs } from '../utils/adminData'
-import api, { catalogService } from '../services/api'
+import { appendChatMessageToSellerThread, findStoredUserById, getStoredChats, getStoredOrders, getStoredUsers, getStoredReviews, resolveDispute, updateStoredUserRole, getStoredProducts, saveStoredProducts, saveStoredUsers, saveStoredReviews, getAdminLogs, appendAdminLog, clearAdminLogs } from '../utils/adminData'
+import api, { balanceService, catalogService, type WithdrawalRequest } from '../services/api'
 import CustomSelect from '../components/CustomSelect/CustomSelect'
 import { CATEGORY_ICON_FALLBACK, CATEGORY_ICON_OPTIONS, CatalogIconBadge, getCatalogIconOption } from '../utils/catalogIcons'
 import { useToast } from '../components/Toast'
 import './AdminPage.css'
 
-type AdminTab = 'overview' | 'users' | 'disputes' | 'products' | 'catalog' | 'dbtools'
+type AdminTab = 'overview' | 'users' | 'disputes' | 'withdrawals' | 'products' | 'catalog' | 'reviews' | 'dbtools'
+type WithdrawalAction = 'complete' | 'refund'
 
 const roleOptions: Array<{ value: UserRole; label: string }> = [
   { value: 'user', label: 'Користувач' },
@@ -44,12 +45,6 @@ type ImageViewerState = {
   zoom: number
   offsetX: number
   offsetY: number
-}
-
-type ImageViewerState = {
-  src: string
-  name: string
-  zoom: number
 }
 
 const flattenCatalogCategories = (categories: CatalogCategory[]) => {
@@ -100,10 +95,17 @@ const AdminPage: React.FC = () => {
   const [chats, setChats] = useState<any[]>([])
   const [chatCount, setChatCount] = useState(0)
   const [products, setProducts] = useState<any[]>([])
+  const [reviews, setReviews] = useState<any[]>([])
+  const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([])
+  const [selectedWithdrawal, setSelectedWithdrawal] = useState<WithdrawalRequest | null>(null)
+  const [pendingWithdrawalAction, setPendingWithdrawalAction] = useState<{ request: WithdrawalRequest; action: WithdrawalAction } | null>(null)
+  const [withdrawalProcessing, setWithdrawalProcessing] = useState<Record<string, boolean>>({})
   const [productsTotal, setProductsTotal] = useState<number | null>(null)
   const [catalogCategories, setCatalogCategories] = useState<CatalogCategory[]>([])
   const [selectedDisputeId, setSelectedDisputeId] = useState('')
   const [productSearch, setProductSearch] = useState('')
+  const [reviewSearch, setReviewSearch] = useState('')
+  const [visibleReviewsCount, setVisibleReviewsCount] = useState(50)
   const [productToDelete, setProductToDelete] = useState<string | null>(null)
   const [debugLogs, setDebugLogs] = useState<any[]>([])
   const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'connected' | 'disconnected' | 'mock'>('unknown')
@@ -158,12 +160,14 @@ const AdminPage: React.FC = () => {
       const storedOrders = getStoredOrders()
       const storedChats = getStoredChats()
       const storedProducts = getStoredProducts()
+      const storedReviews = getStoredReviews()
 
       setUsers(storedUsers)
       setOrders(storedOrders)
       setChats(storedChats)
       setChatCount(storedChats.length)
       setProducts(storedProducts)
+      setReviews(storedReviews)
       setDebugLogs(storedLogs)
 
       const firstDispute = storedOrders.find((order) => order.status === 'disputed')
@@ -174,17 +178,21 @@ const AdminPage: React.FC = () => {
 
     try {
       if (role === 'support' && !isAdmin) {
-        const [disputesRes] = await Promise.all([
+        const [disputesRes, reviewsRes] = await Promise.all([
           api.get('/admin/disputes').catch(() => ({ data: { data: [] } })),
+          api.get('/reviews').catch(() => ({ data: { data: [] } })),
         ])
 
         const nextDisputes = disputesRes.data?.data ?? []
+        const nextReviews = reviewsRes.data?.data ?? []
 
         setUsers(getStoredUsers())
         setOrders(nextDisputes)
         setChats([])
         setChatCount(0)
         setProducts(getStoredProducts())
+        setReviews(nextReviews)
+        setWithdrawals([])
         setCatalogCategories([])
         setDebugLogs(storedLogs)
 
@@ -193,13 +201,15 @@ const AdminPage: React.FC = () => {
         return
       }
 
-      const [usersRes, ordersRes, chatsRes, productsRes, catalogRes, disputesRes] = await Promise.all([
+      const [usersRes, ordersRes, chatsRes, productsRes, catalogRes, disputesRes, reviewsRes, withdrawalsRes] = await Promise.all([
         api.get('/users'),
         api.get('/orders'),
         isAdmin ? api.get('/admin/chat-count') : api.get('/chat/threads'),
         api.get('/products', { params: { page: 1, pageSize: adminProductsPageSize, includeOutOfStock: true } }),
         catalogService.getAdminCategories(),
         api.get('/admin/disputes').catch(() => ({ data: { data: [] } })), // Disputes endpoint might not exist
+        api.get('/reviews').catch(() => ({ data: { data: [] } })),
+        isAdmin ? balanceService.getAdminWithdrawals().catch(() => ({ data: { data: [] } })) : Promise.resolve({ data: { data: [] } }),
       ])
 
       const nextUsers = usersRes.data?.data ?? []
@@ -208,6 +218,8 @@ const AdminPage: React.FC = () => {
       const nextChats = isAdmin ? [] : (chatsRes.data?.data ?? [])
       const nextChatCount = isAdmin ? (chatsRes.data?.data?.count ?? 0) : nextChats.length
       const nextDisputes = disputesRes.data?.data ?? []
+      const nextReviews = reviewsRes.data?.data ?? []
+      const nextWithdrawals = withdrawalsRes.data?.data ?? []
       
       // If we got disputes with chat data, merge them with orders
       if (nextDisputes.length > 0) {
@@ -231,6 +243,8 @@ const AdminPage: React.FC = () => {
       setChats(nextChats)
       setChatCount(nextChatCount)
       setProducts(nextProducts)
+      setReviews(nextReviews)
+      setWithdrawals(nextWithdrawals)
       setProductsTotal(nextProductsTotal)
       setAdminProductsPage(1)
       setCatalogCategories(nextCatalog)
@@ -244,12 +258,15 @@ const AdminPage: React.FC = () => {
       const storedOrders = getStoredOrders()
       const storedChats = getStoredChats()
       const storedProducts = getStoredProducts()
+      const storedReviews = getStoredReviews()
 
       setUsers(storedUsers)
       setOrders(storedOrders)
       setChats(storedChats)
       setChatCount(storedChats.length)
       setProducts(storedProducts)
+      setReviews(storedReviews)
+      setWithdrawals([])
       setProductsTotal(storedProducts.length)
       setCatalogCategories([])
       setDebugLogs(storedLogs)
@@ -327,7 +344,7 @@ const AdminPage: React.FC = () => {
   useEffect(() => {
     // If role changes under us, ensure active tab is valid for the role
     // Include 'dbtools' for admins so new tab remains selectable
-    const tabsForRole = isAdmin ? ['overview', 'users', 'disputes', 'products', 'catalog', 'dbtools'] : role === 'support' ? ['disputes'] : ['overview']
+    const tabsForRole = isAdmin ? ['overview', 'users', 'disputes', 'withdrawals', 'products', 'catalog', 'reviews', 'dbtools'] : role === 'support' ? ['disputes', 'reviews'] : ['overview']
     if (!tabsForRole.includes(activeTab)) {
       setActiveTab(tabsForRole[0] as AdminTab)
     }
@@ -431,6 +448,46 @@ const AdminPage: React.FC = () => {
       return title.includes(q) || id.includes(q) || seller.includes(q) || category.includes(q)
     })
   }, [productSearch, products])
+
+  const usersById = useMemo(() => {
+    const map = new Map<string, string>()
+    users.forEach((candidate) => {
+      if (!candidate.id) return
+      map.set(candidate.id, candidate.username || candidate.email || candidate.id)
+    })
+    return map
+  }, [users])
+
+  const formatPersonLabel = (id?: string, name?: string) => {
+    const cleanId = String(id || '').trim()
+    const cleanName = String(name || '').trim()
+    const resolvedName = usersById.get(cleanId) || cleanName
+
+    if (resolvedName && cleanId && resolvedName !== cleanId) {
+      return `${resolvedName} (${cleanId})`
+    }
+
+    return resolvedName || cleanId || '—'
+  }
+
+  const visibleReviews = useMemo(() => {
+    const query = reviewSearch.trim().toLowerCase()
+    if (!query) return reviews
+    return reviews.filter((review: any) => {
+      const text = (review.text || '').toLowerCase()
+      const sellerName = (review.seller_name || '').toLowerCase()
+      const buyerName = (review.buyer_name || '').toLowerCase()
+      const productTitle = (review.product_title || '').toLowerCase()
+      const id = (review.id || '').toLowerCase()
+      return text.includes(query) || sellerName.includes(query) || buyerName.includes(query) || productTitle.includes(query) || id.includes(query)
+    })
+  }, [reviewSearch, reviews])
+
+  const paginatedReviews = useMemo(() => visibleReviews.slice(0, visibleReviewsCount), [visibleReviews, visibleReviewsCount])
+
+  useEffect(() => {
+    setVisibleReviewsCount(50)
+  }, [reviewSearch, activeTab])
 
   const handleEditProduct = (productId: string) => {
     navigate(`/create-product/${productId}`)
@@ -579,10 +636,26 @@ const AdminPage: React.FC = () => {
     })()
   }
 
+  const handleDeleteReview = (reviewId: string) => {
+    void (async () => {
+      try {
+        await api.delete(`/reviews/${reviewId}`)
+        setReviews((current) => current.filter((review: any) => review.id !== reviewId))
+        showToast('✅ Відгук видалено', 'success')
+        return
+      } catch (err) {
+        console.error('Failed to delete review via backend, fallback to local storage', err)
+      }
+
+      const next = getStoredReviews().filter((review: any) => review.id !== reviewId)
+      saveStoredReviews(next)
+      setReviews(next)
+      showToast('✅ Відгук видалено (локально)', 'success')
+    })()
+  }
+
   const metrics = useMemo(() => {
-    const completedRevenue = orders
-      .filter((order) => order.status === 'completed')
-      .reduce((sum, order) => sum + Number(order.price || 0), 0)
+    const withdrawalRevenue = withdrawals.reduce((sum, request) => sum + Number(request.fee_amount || 0), 0)
 
     return {
       users: users.length,
@@ -590,10 +663,10 @@ const AdminPage: React.FC = () => {
       supports: users.filter((candidate) => candidate.role === 'support').length,
       disputes: disputedOrders.length,
       completedOrders: orders.filter((order) => order.status === 'completed').length,
-      revenue: completedRevenue,
+      revenue: withdrawalRevenue,
       chats: chatCount,
     }
-  }, [chatCount, disputedOrders.length, orders, users])
+  }, [chatCount, disputedOrders.length, orders, users, withdrawals])
 
   const handleRoleChange = (targetUserId: string, nextRole: UserRole) => {
     if (!isAdmin) return
@@ -873,11 +946,53 @@ const AdminPage: React.FC = () => {
     setPendingResolution(null)
   }
 
+  const openWithdrawalDetails = (request: WithdrawalRequest) => {
+    setSelectedWithdrawal(request)
+  }
+
+  const requestWithdrawalAction = (request: WithdrawalRequest, action: WithdrawalAction) => {
+    setPendingWithdrawalAction({ request, action })
+  }
+
+  const confirmWithdrawalAction = async () => {
+    if (!pendingWithdrawalAction) return
+    const { request, action } = pendingWithdrawalAction
+    if (withdrawalProcessing[request.id]) return
+
+    setWithdrawalProcessing((prev) => ({ ...prev, [request.id]: true }))
+    try {
+      if (action === 'complete') {
+        const response = await balanceService.completeWithdrawal(request.id)
+        const updatedRequest = response.data?.data?.request || null
+        if (updatedRequest) {
+          setSelectedWithdrawal(updatedRequest)
+          setWithdrawals((current) => current.map((item) => (item.id === updatedRequest.id ? updatedRequest : item)))
+        }
+        showToast('✅ Переказ підтверджено', 'success')
+      } else {
+        const response = await balanceService.refundWithdrawal(request.id)
+        const updatedRequest = response.data?.data?.request || null
+        if (updatedRequest) {
+          setSelectedWithdrawal(updatedRequest)
+          setWithdrawals((current) => current.map((item) => (item.id === updatedRequest.id ? updatedRequest : item)))
+        }
+        showToast('✅ Кошти повернуто користувачу', 'success')
+      }
+      await loadData()
+    } catch (error) {
+      console.error('Failed to process withdrawal action', error)
+      showToast(action === 'complete' ? 'Не вдалося підтвердити переказ' : 'Не вдалося повернути кошти', 'error')
+    } finally {
+      setWithdrawalProcessing((prev) => ({ ...prev, [request.id]: false }))
+      setPendingWithdrawalAction(null)
+    }
+  }
+
   if (loading) {
     return <div className="admin-page loading">Завантаження...</div>
   }
 
-  const adminTabs: AdminTab[] = isAdmin ? ['overview', 'users', 'disputes', 'products', 'catalog', 'dbtools'] : role === 'support' ? ['disputes'] : ['overview']
+  const adminTabs: AdminTab[] = isAdmin ? ['overview', 'users', 'disputes', 'withdrawals', 'products', 'catalog', 'reviews', 'dbtools'] : role === 'support' ? ['disputes', 'reviews'] : ['overview']
 
   return (
     <div className="admin-page">
@@ -910,9 +1025,11 @@ const AdminPage: React.FC = () => {
               {tab === 'overview' && 'Панель'}
               {tab === 'users' && 'Користувачі'}
               {tab === 'disputes' && 'Спори'}
+              {tab === 'withdrawals' && 'Виводи'}
               {tab === 'products' && 'Товари'}
-                  {tab === 'catalog' && 'Категорії'}
-                  {tab === 'dbtools' && 'DB Tools'}
+              {tab === 'catalog' && 'Категорії'}
+              {tab === 'reviews' && 'Відгуки'}
+              {tab === 'dbtools' && 'DB Tools'}
             </button>
           ))}
         </div>
@@ -1014,6 +1131,60 @@ const AdminPage: React.FC = () => {
                 </div>
               )}
             </div>
+          </section>
+        )}
+
+        {activeTab === 'reviews' && (
+          <section className="admin-section">
+            <div className="section-head">
+              <div>
+                <h2>Модерація відгуків</h2>
+                <p>Тут можна переглядати всі відгуки та видаляти неприйнятний контент.</p>
+              </div>
+              <div className="search-wrap">
+                <Search size={16} />
+                <input
+                  type="text"
+                  placeholder="Пошук за текстом, продавцем, покупцем, товаром або ID"
+                  value={reviewSearch}
+                  onChange={(e) => setReviewSearch(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {visibleReviews.length === 0 ? (
+              <div className="empty-state">Відгуків не знайдено</div>
+            ) : (
+              <div className="reviews-moderation-list">
+                {paginatedReviews.map((review: any) => (
+                  <div key={review.id} className="review-moderation-card">
+                    <div className="review-moderation-head">
+                      <div>
+                        <strong>{review.product_title || 'Без назви товару'}</strong>
+                        <small>ID: {review.id}</small>
+                      </div>
+                      <button className="btn-delete-user" onClick={() => handleDeleteReview(review.id)} title="Видалити відгук">
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                    <div className="review-moderation-meta">
+                      <span>⭐ {Number(review.rating || 0).toFixed(1)}</span>
+                      <span>Покупець: {formatPersonLabel(review.buyer_id, review.buyer_name)}</span>
+                      <span>Продавець: {formatPersonLabel(review.seller_id, review.seller_name)}</span>
+                      <span>{review.created_at ? new Date(review.created_at).toLocaleString('uk-UA') : '—'}</span>
+                    </div>
+                    <p className="review-moderation-text">{review.text || 'Без тексту'}</p>
+                  </div>
+                ))}
+                {visibleReviewsCount < visibleReviews.length ? (
+                  <div style={{ width: '100%', textAlign: 'center', marginTop: 10 }}>
+                    <button className="btn-load-more-reviews" onClick={() => setVisibleReviewsCount((count) => count + 50)}>
+                      Показати ще 50
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            )}
           </section>
         )}
 
@@ -1286,6 +1457,80 @@ const AdminPage: React.FC = () => {
                 </div>
               ) : null}
             </div>
+          </section>
+        )}
+
+        {activeTab === 'withdrawals' && isAdmin && (
+          <section className="admin-section">
+            <div className="section-head">
+              <div>
+                <h2>Заявки на вивід</h2>
+                <p>Підтверджуйте переказ після фактичного відправлення коштів користувачу.</p>
+              </div>
+              <button className="ghost-btn" onClick={loadData}>
+                <RefreshCw size={16} /> Оновити
+              </button>
+            </div>
+
+            {withdrawals.length === 0 ? (
+              <div className="empty-state">Немає заявок на вивід</div>
+            ) : (
+              <div className="withdrawals-list">
+                {withdrawals.map((request) => {
+                  const methodLabel =
+                    request.method === 'paypal'
+                      ? 'PayPal'
+                      : request.method === 'card'
+                        ? 'Карта'
+                        : 'USDT (TRC20)'
+                  const statusLabel =
+                    request.status === 'pending'
+                      ? 'Очікує'
+                      : request.status === 'completed'
+                        ? 'Підтверджено'
+                        : request.status === 'refunded'
+                          ? 'Повернуто'
+                          : 'Відхилено'
+
+                  return (
+                    <article key={request.id} className="withdrawal-card">
+                      <div className="withdrawal-card-head">
+                        <div>
+                          <strong>{request.user?.username || request.user_id}</strong>
+                          <div className="muted">{request.user?.email || request.user_id}</div>
+                        </div>
+                        <span className={`withdraw-status ${request.status}`}>{statusLabel}</span>
+                      </div>
+
+                      <div className="withdrawal-card-grid">
+                        <div>
+                          <small>Сума</small>
+                          <strong>{Number(request.amount_gross || 0).toFixed(2)} ₴</strong>
+                        </div>
+                        <div>
+                          <small>До виплати</small>
+                          <strong>{Number(request.amount_net || 0).toFixed(2)} ₴</strong>
+                        </div>
+                        <div>
+                          <small>Метод</small>
+                          <strong>{methodLabel}</strong>
+                        </div>
+                        <div>
+                          <small>Дата</small>
+                          <strong>{new Date(request.created_at).toLocaleString('uk-UA')}</strong>
+                        </div>
+                      </div>
+
+                      <div className="withdrawal-card-actions">
+                        <button className="ghost-btn" onClick={() => openWithdrawalDetails(request)}>
+                          <Eye size={16} /> Переглянути
+                        </button>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            )}
           </section>
         )}
 
@@ -1724,6 +1969,114 @@ const AdminPage: React.FC = () => {
               />
             </div>
             <p className="image-viewer-hint">Можна крутити колесо миші або натискати `+` / `-`.</p>
+          </div>
+        </div>
+      )}
+      {selectedWithdrawal && (
+        <div className="modal-overlay" onClick={() => setSelectedWithdrawal(null)}>
+          <div className="modal-content withdrawal-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Заявка на вивід</h2>
+            <p className="withdrawal-modal-user">
+              <strong>{selectedWithdrawal.user?.username || selectedWithdrawal.user_id}</strong>
+              <span>{selectedWithdrawal.user?.email || selectedWithdrawal.user_id}</span>
+            </p>
+
+            <div className="withdrawal-modal-grid">
+              <div>
+                <small>Сума</small>
+                <strong>{Number(selectedWithdrawal.amount_gross || 0).toFixed(2)} ₴</strong>
+              </div>
+              <div>
+                <small>До виплати</small>
+                <strong>{Number(selectedWithdrawal.amount_net || 0).toFixed(2)} ₴</strong>
+              </div>
+              <div>
+                <small>Метод</small>
+                <strong>{selectedWithdrawal.method === 'paypal' ? 'PayPal' : selectedWithdrawal.method === 'card' ? 'Карта' : 'USDT (TRC20)'}</strong>
+              </div>
+              <div>
+                <small>Баланс після виводу</small>
+                <strong>{Number(selectedWithdrawal.current_balance_after || 0).toFixed(2)} ₴</strong>
+              </div>
+            </div>
+
+            <div className="withdrawal-modal-details">
+              <div>
+                <small>Реквізити</small>
+                <p>{selectedWithdrawal.destination}</p>
+              </div>
+              <div>
+                <small>Статус</small>
+                <span className={`withdraw-status ${selectedWithdrawal.status}`}>
+                  {selectedWithdrawal.status === 'pending'
+                    ? 'Очікує'
+                    : selectedWithdrawal.status === 'completed'
+                      ? 'Підтверджено'
+                      : selectedWithdrawal.status === 'refunded'
+                        ? 'Повернуто'
+                        : 'Відхилено'}
+                </span>
+              </div>
+              <div>
+                <small>Створено</small>
+                <p>{new Date(selectedWithdrawal.created_at).toLocaleString('uk-UA')}</p>
+              </div>
+              {selectedWithdrawal.processed_at && (
+                <div>
+                  <small>Остання дія</small>
+                  <p>{new Date(selectedWithdrawal.processed_at).toLocaleString('uk-UA')}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="withdrawal-modal-actions">
+              <button className="ghost-btn" onClick={() => setSelectedWithdrawal(null)}>Закрити</button>
+              {selectedWithdrawal.status === 'pending' && (
+                <button className="decision-btn seller" onClick={() => requestWithdrawalAction(selectedWithdrawal, 'complete')}>
+                  Переказано
+                </button>
+              )}
+              {selectedWithdrawal.status === 'pending' && (
+                <button
+                  className="decision-btn refund"
+                  onClick={() => requestWithdrawalAction(selectedWithdrawal, 'refund')}
+                  title="Повернути гроші користувачу"
+                >
+                  Повернути гроші
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {pendingWithdrawalAction && (
+        <div className="confirm-modal-overlay" role="dialog" aria-modal="true" aria-label="Підтвердження операції з виводом">
+          <div className="confirm-modal">
+            <h3>Підтвердіть дію</h3>
+            <p>
+              {pendingWithdrawalAction.action === 'complete'
+                ? 'Ви впевнені, що переказ уже відправлено користувачу?'
+                : 'Ви дійсно хочете повернути кошти назад користувачу?'}
+            </p>
+            <p className="confirm-modal-meta">
+              Заявка: <strong>{pendingWithdrawalAction.request.user?.username || pendingWithdrawalAction.request.user_id}</strong> • Сума: <strong>{Number(pendingWithdrawalAction.request.amount_gross || 0).toFixed(2)} ₴</strong>
+            </p>
+            <div className="confirm-modal-actions">
+              <button className="ghost-btn" onClick={() => setPendingWithdrawalAction(null)}>
+                Скасувати
+              </button>
+              <button
+                className={`decision-btn ${pendingWithdrawalAction.action === 'complete' ? 'seller' : 'refund'}`}
+                onClick={confirmWithdrawalAction}
+                disabled={Boolean(withdrawalProcessing[pendingWithdrawalAction.request.id])}
+              >
+                {withdrawalProcessing[pendingWithdrawalAction.request.id]
+                  ? 'Обробка...'
+                  : pendingWithdrawalAction.action === 'complete'
+                    ? 'Підтвердити'
+                    : 'Повернути'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import React, { useEffect, useState } from 'react'
+import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import './LoginPage.css'
 
@@ -12,13 +12,27 @@ const LoginPage: React.FC = () => {
   const [emailError, setEmailError] = useState<string | null>(null)
   const MAX_USERNAME = 18
   const [usernameError, setUsernameError] = useState<string | null>(null)
+  const [acceptedRules, setAcceptedRules] = useState(false)
+  const [rulesError, setRulesError] = useState<string | null>(null)
   const { login, register, error, isLoading, clearError } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const mode = params.get('mode')
+    if (mode === 'register') {
+      setIsLogin(false)
+    } else if (mode === 'login') {
+      setIsLogin(true)
+    }
+  }, [location.search])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     clearError()
     setLocalError(null)
+    setRulesError(null)
 
     try {
       if (!isLogin && username.length > MAX_USERNAME) {
@@ -36,9 +50,16 @@ const LoginPage: React.FC = () => {
           setEmailError(msg)
           return
         }
+
+        if (!acceptedRules) {
+          const msg = 'Потрібно прийняти правила сайту'
+          setLocalError(msg)
+          setRulesError(msg)
+          return
+        }
       }
 
-      const success = isLogin ? await login({ email, password }) : await register(email, password, username)
+      const success = isLogin ? await login({ email, password }) : await register(email, password, username, acceptedRules)
       if (success) {
         navigate('/')
       } else {
@@ -105,7 +126,28 @@ const LoginPage: React.FC = () => {
             />
           </div>
 
-          <button type="submit" className="auth-submit-btn" disabled={isLoading || (!isLogin && (!!usernameError || !!emailError))}>
+          {!isLogin && (
+            <div className="rules-consent">
+              <label className="rules-checkbox">
+                <input
+                  type="checkbox"
+                  checked={acceptedRules}
+                  onChange={(e) => {
+                    setAcceptedRules(e.target.checked)
+                    if (e.target.checked) setRulesError(null)
+                  }}
+                  disabled={isLoading}
+                />
+                <span className="rules-checkmark" aria-hidden="true" />
+                <span>
+                  Я прочитав та погоджуюсь з <Link to="/rules">правилами сайту</Link>
+                </span>
+              </label>
+              {rulesError && <div className="field-error">{rulesError}</div>}
+            </div>
+          )}
+
+          <button type="submit" className="auth-submit-btn" disabled={isLoading || (!isLogin && (!!usernameError || !!emailError || !acceptedRules))}>
             {isLoading ? 'Завантаження...' : isLogin ? 'Увійти' : 'Зареєструватися'}
           </button>
         </form>

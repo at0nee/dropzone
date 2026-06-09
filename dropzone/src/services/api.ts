@@ -2,6 +2,64 @@ import axios from 'axios'
 import { ApiResponse, AuthResponse, Product, User, Review, CatalogCategory } from '../types'
 import { setStoredAuthUser } from '../utils/adminData'
 
+export interface BalanceTransaction {
+  id: string
+  user_id: string
+  amount: number
+  balance_before: number
+  balance_after: number
+  type: 'topup' | 'purchase_hold' | 'order_payout' | 'dispute_refund' | 'dispute_seller_payout' | 'withdrawal_request' | 'admin_adjustment'
+  reason: string
+  related_order_id?: string
+  related_product_id?: string
+  actor_user_id?: string
+  created_at: string
+}
+
+export interface BalanceTransactionsPayload {
+  items: BalanceTransaction[]
+  total: number
+  page: number
+  pageSize: number
+  summary: {
+    totalIn: number
+    totalOut: number
+    net: number
+    currentBalance: number
+  }
+}
+
+export interface BalanceChartPoint {
+  date: string
+  totalIn: number
+  totalOut: number
+  net: number
+}
+
+export interface BalanceChartPayload {
+  items: BalanceChartPoint[]
+}
+
+export interface WithdrawalRequest {
+  id: string
+  user_id: string
+  amount_gross: number
+  fee_percent: number
+  fee_amount: number
+  amount_net: number
+  method: 'paypal' | 'card' | 'usdt_trc20'
+  destination: string
+  status: 'pending' | 'completed' | 'refunded' | 'rejected'
+  current_balance_after: number
+  created_at: string
+  updated_at: string
+  processed_at?: string
+  processed_by?: string
+  admin_note?: string
+  user?: User | null
+  processed_by_user?: User | null
+}
+
 // Use `VITE_API_BASE_URL` when provided (useful for direct backend ngrok URLs).
 // Otherwise default to relative paths so the dev server (and ngrok) can proxy requests.
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
@@ -38,8 +96,8 @@ export const authService = {
     }
     return response
   },
-  register: async (email: string, password: string, username: string) => {
-    const response = await api.post<ApiResponse<AuthResponse>>('/auth/register', { email, password, username })
+  register: async (email: string, password: string, username: string, accepted_rules: boolean) => {
+    const response = await api.post<ApiResponse<AuthResponse>>('/auth/register', { email, password, username, accepted_rules })
     const payload = response.data.data
     if (response.data.success && payload?.token) {
       localStorage.setItem('auth_token', payload.token)
@@ -135,7 +193,24 @@ export const ordersService = {
 export const userService = {
   getAll: () => api.get<ApiResponse<User[]>>('/users'),
   getById: (id: string) => api.get<ApiResponse<User>>(`/users/${id}`),
-  update: (id: string, data: Partial<User> & { current_password?: string; new_password?: string }) => api.put<ApiResponse<User>>(`/users/${id}`, data),
+  update: (id: string, data: Partial<User> & { current_password?: string; new_password?: string; balance_meta?: { source?: string; method?: string } }) => api.put<ApiResponse<User>>(`/users/${id}`, data),
+}
+
+export const balanceService = {
+  getTransactions: (params?: { page?: number; pageSize?: number; from?: string; to?: string }) =>
+    api.get<ApiResponse<BalanceTransactionsPayload>>('/balance/transactions', { params }),
+  getChart: (params?: { from?: string; to?: string }) =>
+    api.get<ApiResponse<BalanceChartPayload>>('/balance/transactions/chart', { params }),
+  createWithdrawal: (data: { amount: number; method: 'paypal' | 'card' | 'usdt_trc20'; destination: string; current_password: string }) =>
+    api.post<ApiResponse<{ request: WithdrawalRequest; user: User }>>('/balance/withdrawals', data),
+  getMyWithdrawals: () =>
+    api.get<ApiResponse<WithdrawalRequest[]>>('/balance/withdrawals'),
+  getAdminWithdrawals: () =>
+    api.get<ApiResponse<WithdrawalRequest[]>>('/admin/withdrawals'),
+  completeWithdrawal: (id: string, data?: { admin_note?: string }) =>
+    api.post<ApiResponse<{ request: WithdrawalRequest }>>(`/admin/withdrawals/${id}/complete`, data || {}),
+  refundWithdrawal: (id: string, data?: { admin_note?: string }) =>
+    api.post<ApiResponse<{ request: WithdrawalRequest; user: User }>>(`/admin/withdrawals/${id}/refund`, data || {}),
 }
 
 export default api

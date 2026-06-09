@@ -1,0 +1,662 @@
+.balance-history-page {
+  min-height: calc(100vh - 110px);
+  padding: 2rem 1rem 3rem;
+}
+
+.balance-history-shell {
+  width: min(1100px, 100%);
+  margin: 0 auto;
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.07), rgba(0, 153, 255, 0.05));
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 16px;
+  padding: 1.25rem;
+}
+
+.balance-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.balance-history-head .back-btn {
+  flex-shrink: 0;
+}
+
+.balance-history-head h1 {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.35rem;
+  margin-right: auto;
+}
+
+.balance-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.balance-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 220px)) minmax(0, 1fr);
+  gap: 0.85rem;
+  align-items: end;
+  margin-bottom: 1rem;
+}
+
+.balance-filter-bar label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.balance-date-picker {
+  position: relative;
+}
+
+.balance-date-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  border: 1px solid rgba(0, 212, 255, 0.18);
+  border-radius: 12px;
+  padding: 0.82rem 0.9rem;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-primary);
+  background: linear-gradient(180deg, rgba(3, 12, 30, 0.9), rgba(3, 12, 30, 0.72));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.balance-date-picker-trigger:hover,
+.balance-date-picker.open .balance-date-picker-trigger {
+  border-color: rgba(0, 212, 255, 0.45);
+  box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.balance-date-picker-trigger svg {
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.balance-date-picker-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  width: 100%;
+}
+
+.balance-date-picker-text small {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.balance-date-picker-text strong {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.balance-date-picker-panel {
+  position: absolute;
+  top: calc(100% + 0.6rem);
+  left: 0;
+  z-index: 30;
+  width: min(320px, 86vw);
+  padding: 0.9rem;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  background: linear-gradient(180deg, rgba(6, 18, 43, 0.98), rgba(3, 12, 30, 0.98));
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+}
+
+.balance-date-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.balance-date-picker-head strong {
+  text-transform: capitalize;
+  font-size: 0.95rem;
+}
+
+.balance-date-picker-title {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  text-transform: capitalize;
+}
+
+.balance-date-nav,
+.balance-date-clear {
+  border: 1px solid rgba(0, 212, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.balance-date-nav {
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.balance-date-weekdays,
+.balance-date-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.balance-date-weekdays {
+  margin-bottom: 0.45rem;
+}
+
+.balance-date-weekdays span {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.balance-date-cell {
+  min-height: 2.25rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
+}
+
+.balance-date-cell:not(.empty) {
+  cursor: pointer;
+}
+
+.balance-date-cell:hover:not(.empty),
+.balance-date-cell.selected {
+  border-color: rgba(0, 212, 255, 0.35);
+  background: rgba(0, 212, 255, 0.12);
+}
+
+.balance-date-cell.empty {
+  background: transparent;
+}
+
+.balance-month-grid,
+.balance-year-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.balance-month-cell,
+.balance-year-cell {
+  min-height: 2.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.balance-month-cell:hover:not(:disabled),
+.balance-month-cell.selected,
+.balance-year-cell:hover:not(:disabled),
+.balance-year-cell.selected {
+  border-color: rgba(0, 212, 255, 0.35);
+  background: rgba(0, 212, 255, 0.12);
+}
+
+.balance-month-cell:disabled,
+.balance-year-cell:disabled,
+.balance-date-cell:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.balance-date-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+}
+
+.balance-date-clear {
+  padding: 0.55rem 0.85rem;
+}
+
+.balance-date-clear:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.balance-chart-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  width: fit-content;
+  min-height: 44px;
+  padding: 0.72rem 0.95rem;
+  border: 1px solid rgba(0, 212, 255, 0.22);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(0, 212, 255, 0.14), rgba(0, 212, 255, 0.06));
+  color: var(--text-primary);
+  cursor: pointer;
+  font-weight: 600;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  justify-self: start;
+}
+
+.balance-chart-toggle:hover,
+.balance-chart-toggle.active {
+  border-color: rgba(0, 212, 255, 0.45);
+  box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.08);
+}
+
+.balance-chart-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(1, 7, 20, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.balance-chart-modal-panel {
+  width: min(1040px, 100%);
+  max-height: min(88vh, 860px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.1rem;
+  border: 1px solid rgba(0, 212, 255, 0.22);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at top right, rgba(52, 211, 153, 0.12), transparent 38%),
+    radial-gradient(circle at bottom left, rgba(248, 113, 113, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(3, 12, 30, 0.98), rgba(3, 12, 30, 0.95));
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+.balance-chart-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.balance-chart-modal-head small,
+.balance-chart-footer small {
+  display: block;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.balance-chart-modal-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.balance-chart-modal-head span {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.balance-chart-modal-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.balance-chart-close {
+  width: 2.35rem;
+  height: 2.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.balance-chart-legend {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.balance-chart-legend > div {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.balance-chart-wrap {
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+}
+
+.balance-chart-svg {
+  width: 100%;
+  min-width: 760px;
+  height: auto;
+  display: block;
+}
+
+.chart-axis {
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 1.4;
+  shape-rendering: geometricPrecision;
+}
+
+.chart-grid-line {
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 1;
+  stroke-dasharray: 4 6;
+}
+
+.chart-line {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chart-line.income {
+  stroke: #34d399;
+}
+
+.chart-line.expense {
+  stroke: #f87171;
+}
+
+.chart-point {
+  fill: #030c1e;
+  stroke-width: 2.4;
+}
+
+.chart-point.income {
+  stroke: #34d399;
+}
+
+.chart-point.expense {
+  stroke: #f87171;
+}
+
+.chart-axis-label {
+  fill: var(--text-secondary);
+  font-size: 12px;
+}
+
+.chart-axis-label.x-label {
+  font-size: 11px;
+}
+
+.chart-point-label {
+  font-size: 11px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: rgba(3, 12, 30, 0.85);
+  stroke-width: 3px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chart-point-label.income {
+  fill: #86efac;
+}
+
+.chart-point-label.expense {
+  fill: #fca5a5;
+}
+
+.balance-chart-footer {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 0.95rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.balance-chart-footer > div {
+  padding: 0.85rem 0.95rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.balance-chart-footer strong.plus {
+  color: #34d399;
+}
+
+.balance-chart-footer strong.minus {
+  color: #f87171;
+}
+
+.balance-chart-empty {
+  padding: 1rem;
+  border: 1px dashed rgba(0, 212, 255, 0.22);
+  border-radius: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.balance-summary-card {
+  border: 1px solid rgba(0, 212, 255, 0.18);
+  border-radius: 12px;
+  padding: 0.8rem;
+  background: rgba(3, 12, 30, 0.5);
+}
+
+.balance-summary-card small {
+  display: block;
+  color: var(--text-secondary);
+  margin-bottom: 0.35rem;
+}
+
+.balance-summary-card strong {
+  font-size: 1.1rem;
+}
+
+.balance-summary-card.positive strong {
+  color: #34d399;
+}
+
+.balance-summary-card.negative strong {
+  color: #f87171;
+}
+
+.balance-transactions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.balance-transaction-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid rgba(0, 212, 255, 0.14);
+  border-radius: 12px;
+  padding: 0.8rem 0.9rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.balance-transaction-card.income {
+  border-left: 3px solid rgba(52, 211, 153, 0.8);
+}
+
+.balance-transaction-card.expense {
+  border-left: 3px solid rgba(248, 113, 113, 0.85);
+}
+
+.balance-transaction-left {
+  display: flex;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.balance-transaction-left p {
+  margin: 0.2rem 0;
+  color: var(--text-secondary);
+  word-break: break-word;
+}
+
+.balance-transaction-left small,
+.balance-transaction-right small {
+  color: var(--text-secondary);
+}
+
+.balance-transaction-icon {
+  margin-top: 0.2rem;
+  color: var(--accent-primary);
+}
+
+.balance-transaction-right {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.balance-amount {
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+}
+
+.balance-amount.plus {
+  color: #34d399;
+}
+
+.balance-amount.minus {
+  color: #f87171;
+}
+
+.balance-load-more-wrap {
+  margin-top: 0.9rem;
+  text-align: center;
+}
+
+.btn-load-more-balance {
+  border: 1px solid rgba(0, 212, 255, 0.3);
+  background: rgba(0, 212, 255, 0.1);
+  color: var(--text-primary);
+  border-radius: 10px;
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+}
+
+.btn-load-more-balance.secondary {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.btn-load-more-balance:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.balance-empty {
+  border: 1px dashed rgba(0, 212, 255, 0.25);
+  border-radius: 12px;
+  padding: 1rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .balance-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .balance-filter-bar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .balance-chart-footer {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .balance-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .balance-transaction-card {
+    flex-direction: column;
+  }
+
+  .balance-transaction-right {
+    text-align: left;
+  }
+
+  .balance-history-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .balance-history-head h1 {
+    margin-right: 0;
+  }
+
+  .balance-filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .balance-chart-modal-head,
+  .balance-chart-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .balance-chart-modal-head {
+    flex-direction: column;
+  }
+
+  .balance-chart-modal-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .balance-chart-modal-panel {
+    max-height: 92vh;
+    padding: 0.95rem;
+  }
+
+  .balance-date-picker-panel {
+    width: min(100%, 320px);
+  }
+
+  .balance-month-grid,
+  .balance-year-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .balance-chart-svg {
+    min-width: 700px;
+  }
+}

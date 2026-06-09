@@ -107,6 +107,50 @@ export interface CartItem {
   quantity: number
 }
 
+export type BalanceTransactionType =
+  | 'topup'
+  | 'purchase_hold'
+  | 'order_payout'
+  | 'dispute_refund'
+  | 'dispute_seller_payout'
+  | 'withdrawal_request'
+  | 'admin_adjustment'
+
+export type WithdrawalMethod = 'paypal' | 'card' | 'usdt_trc20'
+export type WithdrawalStatus = 'pending' | 'completed' | 'rejected'
+
+export interface BalanceTransaction {
+  id: string
+  user_id: string
+  amount: number
+  balance_before: number
+  balance_after: number
+  type: BalanceTransactionType
+  reason: string
+  related_order_id?: string
+  related_product_id?: string
+  actor_user_id?: string
+  created_at: string
+}
+
+export interface WithdrawalRequest {
+  id: string
+  user_id: string
+  amount_gross: number
+  fee_percent: number
+  fee_amount: number
+  amount_net: number
+  method: WithdrawalMethod
+  destination: string
+  status: WithdrawalStatus
+  current_balance_after: number
+  created_at: string
+  updated_at: string
+  processed_at?: string
+  processed_by?: string
+  admin_note?: string
+}
+
 export interface Database {
   users: User[]
   products: Product[]
@@ -115,6 +159,8 @@ export interface Database {
   chats: ChatThread[]
   carts: Record<string, CartItem[]>
   catalog_categories: CatalogCategory[]
+  balance_transactions: BalanceTransaction[]
+  withdrawal_requests: WithdrawalRequest[]
 }
 
 const STATE_DB = process.env.MYSQL_DATABASE || 'dropzone'
@@ -142,6 +188,8 @@ const CHAT_MESSAGES_TABLE = 'chat_messages'
 const CARTS_TABLE = 'carts'
 const SESSIONS_TABLE = 'sessions'
 const CATALOG_CATEGORIES_TABLE = 'catalog_categories'
+const BALANCE_TRANSACTIONS_TABLE = 'balance_transactions'
+const WITHDRAWAL_REQUESTS_TABLE = 'withdrawal_requests'
 
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex')
 
@@ -341,6 +389,8 @@ const seedDb = (): Database => {
     chats: [],
     carts: {},
     catalog_categories: catalogCategories,
+    balance_transactions: [],
+    withdrawal_requests: [],
   }
 }
 
@@ -489,6 +539,42 @@ const ensureSchema = async () => {
     )
   `)
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${BALANCE_TRANSACTIONS_TABLE} (
+      id VARCHAR(64) PRIMARY KEY,
+      user_id VARCHAR(64) NOT NULL,
+      amount DOUBLE NOT NULL,
+      balance_before DOUBLE NOT NULL,
+      balance_after DOUBLE NOT NULL,
+      type VARCHAR(64) NOT NULL,
+      reason VARCHAR(255) NOT NULL,
+      related_order_id VARCHAR(64) NULL,
+      related_product_id VARCHAR(64) NULL,
+      actor_user_id VARCHAR(64) NULL,
+      created_at DATETIME NOT NULL
+    )
+  `)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${WITHDRAWAL_REQUESTS_TABLE} (
+      id VARCHAR(64) PRIMARY KEY,
+      user_id VARCHAR(64) NOT NULL,
+      amount_gross DOUBLE NOT NULL,
+      fee_percent DOUBLE NOT NULL,
+      fee_amount DOUBLE NOT NULL,
+      amount_net DOUBLE NOT NULL,
+      method VARCHAR(32) NOT NULL,
+      destination VARCHAR(255) NOT NULL,
+      status VARCHAR(32) NOT NULL,
+      current_balance_after DOUBLE NOT NULL,
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      processed_at DATETIME NULL,
+      processed_by VARCHAR(64) NULL,
+      admin_note VARCHAR(255) NULL
+    )
+  `)
+
   try {
     await pool.query(`ALTER TABLE ${CATALOG_CATEGORIES_TABLE} ADD COLUMN emoji VARCHAR(32) NULL AFTER name`)
   } catch {}
@@ -518,6 +604,15 @@ const ensureSchema = async () => {
   } catch {}
   try {
     await pool.query(`CREATE INDEX idx_orders_seller ON ${ORDERS_TABLE} (seller_id)`)
+  } catch {}
+  try {
+    await pool.query(`CREATE INDEX idx_balance_tx_user_created ON ${BALANCE_TRANSACTIONS_TABLE} (user_id, created_at)`)
+  } catch {}
+  try {
+    await pool.query(`CREATE INDEX idx_withdrawal_user_created ON ${WITHDRAWAL_REQUESTS_TABLE} (user_id, created_at)`)
+  } catch {}
+  try {
+    await pool.query(`CREATE INDEX idx_withdrawal_status_created ON ${WITHDRAWAL_REQUESTS_TABLE} (status, created_at)`)
   } catch {}
 }
 
@@ -688,6 +783,44 @@ const loadCatalogCategories = async (): Promise<CatalogCategory[]> => {
   }))
 }
 
+const loadBalanceTransactions = async (): Promise<BalanceTransaction[]> => {
+  const [rows] = await pool.query<any[]>(`SELECT * FROM ${BALANCE_TRANSACTIONS_TABLE} ORDER BY created_at DESC`)
+  return rows.map((row) => ({
+    id: row.id,
+    user_id: row.user_id,
+    amount: Number(row.amount || 0),
+    balance_before: Number(row.balance_before || 0),
+    balance_after: Number(row.balance_after || 0),
+    type: row.type,
+    reason: row.reason,
+    related_order_id: row.related_order_id || undefined,
+    related_product_id: row.related_product_id || undefined,
+    actor_user_id: row.actor_user_id || undefined,
+    created_at: mapDate(row.created_at),
+  }))
+}
+
+const loadWithdrawalRequests = async (): Promise<WithdrawalRequest[]> => {
+  const [rows] = await pool.query<any[]>(`SELECT * FROM ${WITHDRAWAL_REQUESTS_TABLE} ORDER BY created_at DESC`)
+  return rows.map((row) => ({
+    id: row.id,
+    user_id: row.user_id,
+    amount_gross: Number(row.amount_gross || 0),
+    fee_percent: Number(row.fee_percent || 0),
+    fee_amount: Number(row.fee_amount || 0),
+    amount_net: Number(row.amount_net || 0),
+    method: row.method,
+    destination: row.destination,
+    status: row.status,
+    current_balance_after: Number(row.current_balance_after || 0),
+    created_at: mapDate(row.created_at),
+    updated_at: mapDate(row.updated_at),
+    processed_at: row.processed_at ? mapDate(row.processed_at) : undefined,
+    processed_by: row.processed_by || undefined,
+    admin_note: row.admin_note || undefined,
+  }))
+}
+
 const loadSeedIfEmpty = async () => {
   const [rows] = await pool.query<any[]>(`SELECT COUNT(*) AS count FROM ${USERS_TABLE}`)
   const count = Number(rows[0]?.count || 0)
@@ -808,7 +941,7 @@ export const ensureDb = async (): Promise<Database> => {
   await loadSeedReviewsIfMissing()
   await loadSeedCatalogIfMissing()
   await syncSellerStatsFromReviews()
-  const [users, products, reviews, orders, chats, carts, catalog_categories] = await Promise.all([
+  const [users, products, reviews, orders, chats, carts, catalog_categories, balance_transactions, withdrawal_requests] = await Promise.all([
     loadUsers(),
     loadProducts(),
     loadReviews(),
@@ -816,8 +949,10 @@ export const ensureDb = async (): Promise<Database> => {
     loadChats(),
     loadCarts(),
     loadCatalogCategories(),
+    loadBalanceTransactions(),
+    loadWithdrawalRequests(),
   ])
-  return { users, products, reviews, orders, chats, carts, catalog_categories }
+  return { users, products, reviews, orders, chats, carts, catalog_categories, balance_transactions, withdrawal_requests }
 }
 
 export const saveDb = async (db: Database) => {
@@ -971,6 +1106,72 @@ export const saveDb = async (db: Database) => {
       )
     }
 
+    // Upsert balance transactions
+    const txRows = db.balance_transactions.map((tx) => [
+      tx.id,
+      tx.user_id,
+      tx.amount,
+      tx.balance_before,
+      tx.balance_after,
+      tx.type,
+      tx.reason,
+      tx.related_order_id || null,
+      tx.related_product_id || null,
+      tx.actor_user_id || null,
+      toMysqlDateTime(tx.created_at),
+    ])
+    await batchInsertUpsert(
+      BALANCE_TRANSACTIONS_TABLE,
+      ['id','user_id','amount','balance_before','balance_after','type','reason','related_order_id','related_product_id','actor_user_id','created_at'],
+      txRows,
+      ['amount','balance_before','balance_after','type','reason','related_order_id','related_product_id','actor_user_id','created_at']
+    )
+    const txIds = db.balance_transactions.map((tx) => tx.id)
+    if (txIds.length === 0) {
+      await connection.query(`DELETE FROM ${BALANCE_TRANSACTIONS_TABLE}`)
+    } else {
+      const deletePlaceholders = txIds.map(() => '?').join(',')
+      await connection.query(
+        `DELETE FROM ${BALANCE_TRANSACTIONS_TABLE} WHERE id NOT IN (${deletePlaceholders})`,
+        txIds
+      )
+    }
+
+    // Upsert withdrawal requests
+    const withdrawalRows = db.withdrawal_requests.map((request) => [
+      request.id,
+      request.user_id,
+      request.amount_gross,
+      request.fee_percent,
+      request.fee_amount,
+      request.amount_net,
+      request.method,
+      request.destination,
+      request.status,
+      request.current_balance_after,
+      toMysqlDateTime(request.created_at),
+      toMysqlDateTime(request.updated_at),
+      request.processed_at ? toMysqlDateTime(request.processed_at) : null,
+      request.processed_by || null,
+      request.admin_note || null,
+    ])
+    await batchInsertUpsert(
+      WITHDRAWAL_REQUESTS_TABLE,
+      ['id','user_id','amount_gross','fee_percent','fee_amount','amount_net','method','destination','status','current_balance_after','created_at','updated_at','processed_at','processed_by','admin_note'],
+      withdrawalRows,
+      ['amount_gross','fee_percent','fee_amount','amount_net','method','destination','status','current_balance_after','updated_at','processed_at','processed_by','admin_note']
+    )
+    const withdrawalIds = db.withdrawal_requests.map((request) => request.id)
+    if (withdrawalIds.length === 0) {
+      await connection.query(`DELETE FROM ${WITHDRAWAL_REQUESTS_TABLE}`)
+    } else {
+      const deletePlaceholders = withdrawalIds.map(() => '?').join(',')
+      await connection.query(
+        `DELETE FROM ${WITHDRAWAL_REQUESTS_TABLE} WHERE id NOT IN (${deletePlaceholders})`,
+        withdrawalIds
+      )
+    }
+
     await connection.commit()
   } catch (error) {
     await connection.rollback()
@@ -1083,6 +1284,13 @@ export const deleteGeneratedPrefix = async (prefix = 'gen-') => {
        LEFT JOIN ${PRODUCTS_TABLE} p ON o.product_id = p.id
        WHERE o.seller_id LIKE ? OR o.buyer_id LIKE ? OR p.seller_id LIKE ?`,
       [like, like, like]
+    )
+
+    // Balance transactions tied to generated users/orders/products
+    await connection.query(
+      `DELETE FROM ${BALANCE_TRANSACTIONS_TABLE}
+       WHERE user_id LIKE ? OR actor_user_id LIKE ? OR related_order_id LIKE ? OR related_product_id LIKE ?`,
+      [like, like, like, like]
     )
 
     // Chat messages related to generated chats or sent by generated users

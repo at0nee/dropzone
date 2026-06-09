@@ -147,6 +147,8 @@ const HomePage: React.FC = () => {
 
     // Add all sellers with reviews
     reviews.forEach((review) => {
+      if (!review.seller_id) return
+
       const current = sellerMeta.get(review.seller_id)
       if (!current) {
         sellerMeta.set(review.seller_id, {
@@ -166,7 +168,7 @@ const HomePage: React.FC = () => {
       // Get accurate metrics from reviews
       const sellerReviews = reviews.filter((r) => r.seller_id === sellerId)
       const avgRating = sellerReviews.length > 0 
-        ? Math.round((sellerReviews.reduce((sum, r) => sum + r.rating, 0) / sellerReviews.length) * 10) / 10
+        ? Math.round((sellerReviews.reduce((sum, r) => sum + (Number(r.rating) || 0), 0) / sellerReviews.length) * 10) / 10
         : 0
 
       return {

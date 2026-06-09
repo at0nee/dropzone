@@ -206,9 +206,9 @@ const ChatPage: React.FC = () => {
   }
 
   const markChatAsRead = (chat: Chat) => {
-    const latestMessage = [...chat.messages]
+    const visibleMessages = [...chat.messages]
       .filter((message) => message.sender_id !== user?.id && message.sender_id !== 'system')
-      .at(-1)
+    const latestMessage = visibleMessages[visibleMessages.length - 1]
 
     if (!latestMessage) return
 

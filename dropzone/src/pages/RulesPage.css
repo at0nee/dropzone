@@ -1,0 +1,134 @@
+.rules-page {
+  min-height: 100vh;
+  padding: 2rem 1rem 3rem;
+  background:
+    radial-gradient(circle at top left, rgba(0, 212, 255, 0.12), transparent 32%),
+    radial-gradient(circle at top right, rgba(0, 153, 255, 0.1), transparent 28%),
+    var(--bg-primary);
+}
+
+.rules-shell {
+  width: min(1100px, 100%);
+  margin: 0 auto;
+}
+
+.rules-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--accent-primary);
+  text-decoration: none;
+  margin-bottom: 1rem;
+  font-weight: 600;
+}
+
+.rules-back-btn:hover {
+  color: var(--accent-secondary);
+}
+
+.rules-hero {
+  background: linear-gradient(135deg, rgba(8, 14, 34, 0.98), rgba(12, 21, 52, 0.96));
+  border: 1px solid rgba(0, 212, 255, 0.18);
+  border-radius: 24px;
+  padding: 2rem;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+}
+
+.rules-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(0, 212, 255, 0.12);
+  color: var(--accent-primary);
+  border: 1px solid rgba(0, 212, 255, 0.18);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.rules-hero h1 {
+  margin: 1rem 0 0.75rem;
+  font-size: clamp(2rem, 4vw, 3rem);
+}
+
+.rules-hero p {
+  margin: 0;
+  max-width: 70ch;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.rules-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.rule-card,
+.rules-note-card {
+  background: linear-gradient(135deg, rgba(8, 15, 38, 0.92), rgba(5, 12, 30, 0.96));
+  border: 1px solid rgba(0, 212, 255, 0.14);
+  border-radius: 18px;
+  padding: 1.25rem;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.18);
+}
+
+.rule-card-head,
+.rules-note-head {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.9rem;
+}
+
+.rule-card-head h2,
+.rules-note-head h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.rule-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(0, 212, 255, 0.12);
+  color: var(--accent-primary);
+}
+
+.rule-card ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.rule-card li + li {
+  margin-top: 0.6rem;
+}
+
+.rules-note-card {
+  margin-top: 1rem;
+}
+
+.rules-note-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+@media (max-width: 800px) {
+  .rules-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .rules-hero,
+  .rule-card,
+  .rules-note-card {
+    padding: 1.1rem;
+  }
+}

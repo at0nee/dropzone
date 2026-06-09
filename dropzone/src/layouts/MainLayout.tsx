@@ -14,15 +14,17 @@ const MainLayout: React.FC = () => {
       <main className={`main-content ${isChatPage ? 'chat-route' : ''}`}>
         <Outlet />
       </main>
-      <footer className="site-footer">
-        <div className="site-footer-inner">
-          <a className="footer-link" href="mailto:support@dropzone.com">support@dropzone.com</a>
-          <span className="footer-dot" aria-hidden="true">•</span>
-          <Link className="footer-link" to="/rules">Правила сайту</Link>
-          <span className="footer-dot" aria-hidden="true">•</span>
-          <span className="footer-copy">© {currentYear} Dropzone</span>
-        </div>
-      </footer>
+      {!isChatPage && (
+        <footer className="site-footer">
+          <div className="site-footer-inner">
+            <a className="footer-link" href="mailto:support@dropzone.com">support@dropzone.com</a>
+            <span className="footer-dot" aria-hidden="true">•</span>
+            <Link className="footer-link" to="/rules">Правила сайту</Link>
+            <span className="footer-dot" aria-hidden="true">•</span>
+            <span className="footer-copy">© {currentYear} Dropzone</span>
+          </div>
+        </footer>
+      )}
     </div>
   )
 }

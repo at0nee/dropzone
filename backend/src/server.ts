@@ -1095,10 +1095,24 @@ app.get('/reviews', asyncHandler(async (req, res) => {
   const db = await ensureDb()
   const productId = normalizeText(req.query.product_id)
   const sellerId = normalizeText(req.query.seller_id)
+  const productTitleById = new Map((db.products || []).map((product) => [product.id, product.title]))
+  const orderTitleById = new Map((db.orders || []).map((order) => [order.id, order.product_name]))
+
   const items = db.reviews.filter((review) => {
     const matchesProduct = !productId || review.product_id === productId
     const matchesSeller = !sellerId || review.seller_id === sellerId
     return matchesProduct && matchesSeller
+  }).map((review) => {
+    const existingTitle = normalizeText(review.product_title)
+    if (existingTitle) return review
+
+    const byProduct = review.product_id ? normalizeText(productTitleById.get(review.product_id)) : ''
+    if (byProduct) return { ...review, product_title: byProduct }
+
+    const byOrder = review.order_id ? normalizeText(orderTitleById.get(review.order_id)) : ''
+    if (byOrder) return { ...review, product_title: byOrder }
+
+    return review
   })
   send(res, items)
 }))

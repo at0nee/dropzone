@@ -268,11 +268,9 @@ const ReviewsSection: React.FC<ReviewsSectionProps> = ({ sellerId, productId }) 
                   </div>
                   <small>{new Date(review.created_at).toLocaleDateString('uk-UA')}</small>
                 </div>
-                {review.product_title && review.product_id ? (
-                  <div className="review-product-info">
-                    Товар: <span className="product-title-ref">{review.product_title}</span>
-                  </div>
-                ) : null}
+                <p className="review-product-ref">
+                  Товар: <span className="product-title-ref">{review.product_title || 'Товар видалено'}</span>
+                </p>
                 <p className="review-comment">{review.text}</p>
               </div>
             ))

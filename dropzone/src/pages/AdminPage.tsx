@@ -655,7 +655,10 @@ const AdminPage: React.FC = () => {
   }
 
   const metrics = useMemo(() => {
-    const withdrawalRevenue = withdrawals.reduce((sum, request) => sum + Number(request.fee_amount || 0), 0)
+    const withdrawalRevenue = withdrawals.reduce((sum, request) => {
+      if (request.status !== 'completed') return sum
+      return sum + Number(request.fee_amount || 0)
+    }, 0)
 
     return {
       users: users.length,

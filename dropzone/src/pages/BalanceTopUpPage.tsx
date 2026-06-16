@@ -164,7 +164,7 @@ const BalanceTopUpPage: React.FC = () => {
       <div className="topup-card">
         <div className="topup-header">
           <h1><Wallet size={24} /> Поповнення балансу</h1>
-          <p>Імітація платіжного процесу для тестового середовища</p>
+          <p>Швидке та безпечне поповнення балансу</p>
         </div>
 
         {!isSuccess ? (
@@ -297,7 +297,7 @@ const BalanceTopUpPage: React.FC = () => {
 
               <small>
                 {isProcessing
-                  ? `Виконується імітація платежу (${progress}%)`
+                  ? `Платіж обробляється (${progress}%)`
                   : `Буде поповнено: ${amount} ₴ через ${PAYMENT_LABELS[paymentMethod]}`}
               </small>
             </div>
@@ -317,7 +317,7 @@ const BalanceTopUpPage: React.FC = () => {
             <h2>Баланс успішно поповнено</h2>
             <p>Зараховано <strong>{amount} ₴</strong> через {PAYMENT_LABELS[paymentMethod]}</p>
             <div className="success-balance">Поточний баланс: <strong>{Number(user.balance || 0)} ₴</strong></div>
-            <div className="success-note"><ShieldCheck size={16} /> Платіж оброблено в тестовому режимі</div>
+            <div className="success-note"><ShieldCheck size={16} /> Кошти успішно зараховано на баланс</div>
             <div className="topup-actions">
               <button className="btn-primary" onClick={() => navigate('/profile')}>До профілю</button>
               <button className="btn-ghost" onClick={() => navigate('/')}>На головну</button>
